@@ -38,15 +38,15 @@ const weights = {
 };
 
 const viewCopy = {
-  overview: { title: "台股 AI 監測主頁", subtitle: "選擇一個功能開始看盤：強勢股、產業強勢度、法人買超、法人賣超、動量排行、智慧選股器與 AI 問答。", table: "候選清單" },
+  overview: { title: "台股 AI 監測主頁", subtitle: "AI 判斷基準：法人、動能、MACD、均線、量能、風險、回測。", table: "候選清單" },
   strong: { title: "強勢股", subtitle: "可切換 1、3、5、10、20、60 日區間，找出各時間週期的強勢排行。", table: "強勢股排行" },
   sectors: { title: "產業強勢度", subtitle: "把個股訊號彙整成產業分數，快速判斷資金正在流向哪裡。", table: "產業成分股" },
-  buy: { title: "法人買超", subtitle: "聚焦近 5 日三大法人合計買超，並拆看外資、投信、自營商。", table: "法人買超排行" },
-  sell: { title: "法人賣超", subtitle: "找出法人連續調節或籌碼轉弱標的，做風險控管與避開清單。", table: "法人賣超排行" },
+  institution: { title: "法人買賣超", subtitle: "監測三大法人資金動作，可切換買超或賣超排行，並依 1、3、5、10、20、60 日期間排序。", table: "法人買賣超排行" },
   momentum: { title: "動量排行", subtitle: "依 20 日與 60 日價格動量、量能變化排序，觀察趨勢延續。", table: "動量排行" },
   screener: { title: "智慧選股器", subtitle: "用產業、法人方向、動量、PE、量能與風險建立每日候選名單。", table: "智慧篩選結果" },
+  analysis: { title: "個股分析", subtitle: "輸入股票代碼，整合均線方向、MACD、RSI、法人籌碼、主力估算與量化買賣區間。", table: "個股分析" },
   ai: { title: "AI 選股", subtitle: "以籌碼、動量、量能與風險加權計算 AI 分數，產生每日追蹤清單。", table: "AI 選股清單" },
-  qa: { title: "AI 問答", subtitle: "在網頁內直接詢問強勢股、產業輪動、法人買賣超與 AI 選股理由。", table: "問答參考清單" }
+  qa: { title: "AI 助手", subtitle: "在網頁內直接詢問強勢股、產業輪動、法人買賣超與 AI 選股理由。", table: "問答參考清單" }
 };
 
 const state = {
@@ -56,16 +56,71 @@ const state = {
   minFlow: -5000,
   search: "",
   strongPeriod: 20,
-  strongLimit: 10
+  strongLimit: 10,
+  institutionDirection: "buy",
+  buyPeriod: 5,
+  buyLimit: 10
 };
 
 const screenerState = {
-  sector: "all",
-  flow: "all",
-  minMomentum: 0,
-  maxPe: 40,
-  excludeRisk: false,
-  volumeOnly: false
+  activeGroup: "suggested",
+  activeMetric: "score",
+  conditions: [],
+  hasRun: false
+};
+
+const conditionGroups = {
+  suggested: {
+    title: "建議策略",
+    hint: "常用台股短線與波段篩選條件",
+    metrics: ["score", "flow5", "mom20", "volume", "risk"]
+  },
+  chip: {
+    title: "籌碼法人",
+    hint: "用三大法人與外資、投信資金流向篩選",
+    metrics: ["flow5", "flow20", "flow60", "foreign", "trust", "dealer"]
+  },
+  technical: {
+    title: "技術指標",
+    hint: "用動量、MACD、均線、量能與回測勝率篩選",
+    metrics: ["mom20", "mom60", "momentumPower", "macdValue", "maBullishCount", "backtestWinRate", "volume"]
+  },
+  basic: {
+    title: "基本面",
+    hint: "用產業、PE、波動與風險做基本篩選",
+    metrics: ["sector", "pe", "volatility", "risk"]
+  }
+};
+
+const conditionMetrics = {
+  score: { label: "AI 分數", type: "number", defaultValue: 70, value: (stock) => stock.score },
+  flow5: { label: "法人 5 日買賣超", type: "number", defaultValue: 1000, value: (stock) => stock.flow5, suffix: "張" },
+  flow20: { label: "法人 20 日買賣超", type: "number", defaultValue: 3000, value: (stock) => stock.flow20, suffix: "張" },
+  flow60: { label: "法人 60 日買賣超", type: "number", defaultValue: 8000, value: (stock) => stock.flow60, suffix: "張" },
+  foreign: { label: "外資買賣超", type: "number", defaultValue: 1000, value: (stock) => stock.foreign, suffix: "張" },
+  trust: { label: "投信買賣超", type: "number", defaultValue: 300, value: (stock) => stock.trust, suffix: "張" },
+  dealer: { label: "自營商買賣超", type: "number", defaultValue: 200, value: (stock) => stock.dealer, suffix: "張" },
+  mom20: { label: "20 日漲幅", type: "number", defaultValue: 5, value: (stock) => stock.mom20, suffix: "%" },
+  mom60: { label: "60 日漲幅", type: "number", defaultValue: 10, value: (stock) => stock.mom60, suffix: "%" },
+  momentumPower: { label: "動能分數", type: "number", defaultValue: 65, value: (stock) => momentumPower(stock) },
+  macdValue: { label: "MACD 強度", type: "number", defaultValue: 3, value: (stock) => stock.macdValue },
+  maBullishCount: { label: "均線多頭數", type: "number", defaultValue: 2, value: (stock) => stock.maBullishCount },
+  backtestWinRate: { label: "回測勝率", type: "number", defaultValue: 55, value: (stock) => stock.backtestWinRate, suffix: "%" },
+  volume: { label: "量能倍數", type: "number", defaultValue: 1.2, value: (stock) => stock.volume, suffix: "倍" },
+  pe: { label: "PE 本益比", type: "number", defaultValue: 30, value: (stock) => stock.pe },
+  volatility: { label: "波動率", type: "number", defaultValue: 30, value: (stock) => stock.volatility },
+  sector: { label: "產業", type: "select", defaultValue: "", value: (stock) => stock.sector, options: () => [...new Set(stocks.map((stock) => stock.sector))].sort((a, b) => a.localeCompare(b, "zh-Hant")) },
+  risk: { label: "風險標籤", type: "select", defaultValue: "可追蹤", value: (stock) => stock.risk, options: () => ["可追蹤", "觀望", "高波動"] }
+};
+
+const operatorOptions = {
+  number: [
+    { value: "gte", label: "大於等於" },
+    { value: "lte", label: "小於等於" },
+    { value: "gt", label: "大於" },
+    { value: "lt", label: "小於" }
+  ],
+  select: [{ value: "eq", label: "等於" }]
 };
 
 const els = {
@@ -81,6 +136,9 @@ const els = {
   avgScore: document.querySelector("#avgScore"),
   netFlow: document.querySelector("#netFlow"),
   hotSector: document.querySelector("#hotSector"),
+  capitalSector: document.querySelector("#capitalSector"),
+  capitalSectorNote: document.querySelector("#capitalSectorNote"),
+  institutionTotal: document.querySelector("#institutionTotal"),
   topPick: document.querySelector("#topPick"),
   topBadge: document.querySelector("#topBadge"),
   filterLabel: document.querySelector("#filterLabel"),
@@ -96,8 +154,25 @@ const els = {
   peOutput: document.querySelector("#peOutput"),
   riskFilter: document.querySelector("#riskFilter"),
   volumeFilter: document.querySelector("#volumeFilter"),
-  strongLimitSelect: document.querySelector("#strongLimitSelect"),
+  conditionGroupTitle: document.querySelector("#conditionGroupTitle"),
+  conditionGroupHint: document.querySelector("#conditionGroupHint"),
+  conditionMetricList: document.querySelector("#conditionMetricList"),
+  conditionOperator: document.querySelector("#conditionOperator"),
+  conditionValue: document.querySelector("#conditionValue"),
+  addConditionButton: document.querySelector("#addConditionButton"),
+  clearConditionsButton: document.querySelector("#clearConditionsButton"),
+  runScreenerButton: document.querySelector("#runScreenerButton"),
+  selectedConditions: document.querySelector("#selectedConditions"),
+  stockAnalysisForm: document.querySelector("#stockAnalysisForm"),
+  analysisCodeInput: document.querySelector("#analysisCodeInput"),
+  stockAnalysisResult: document.querySelector("#stockAnalysisResult"),
+  strongLimitInput: document.querySelector("#strongLimitInput"),
+  strongSearchButton: document.querySelector("#strongSearchButton"),
+  buyLimitInput: document.querySelector("#buyLimitInput"),
+  buySearchButton: document.querySelector("#buySearchButton"),
+  institutionHint: document.querySelector("#institutionHint"),
   momentumHeader: document.querySelector("#momentumHeader"),
+  flowHeader: document.querySelector("#flowHeader"),
   chatLog: document.querySelector("#chatLog"),
   chatForm: document.querySelector("#chatForm"),
   chatInput: document.querySelector("#chatInput"),
@@ -135,6 +210,111 @@ function periodMomentum(stock, period) {
   return stock.mom20;
 }
 
+function estimateFlow(stock, days) {
+  if (days === 1) return Math.round(stock.flow5 * 0.22 + stock.dealer * 0.2);
+  if (days === 3) return Math.round(stock.flow5 * 0.62 + stock.trust * 0.25);
+  if (days === 5) return stock.flow5;
+  if (days === 10) return Math.round(stock.flow5 * 1.75 + stock.trust * 0.6 + stock.dealer * 0.35);
+  if (days === 20) return Math.round(stock.flow5 * 3.1 + stock.trust * 1.4 + stock.dealer * 0.8);
+  if (days === 60) return Math.round(stock.flow5 * 7.2 + stock.foreign * 1.6 + stock.trust * 2.2);
+  return stock.flow5;
+}
+
+function momentumPower(stock) {
+  const gain = stock.activeMomentum ?? stock.mom20;
+  return Math.round(clamp(gain * 4 + stock.volume * 18 + stock.score * 0.22, 0, 100));
+}
+
+function technicalProfile(stock) {
+  const ma5 = roundOne(stock.price * (1 + stock.mom20 / 100 * 0.12));
+  const ma10 = roundOne(stock.price * (1 + stock.mom20 / 100 * 0.06));
+  const ma20 = roundOne(stock.price * (1 - stock.mom20 / 100 * 0.1));
+  const ma60 = roundOne(stock.price * (1 - stock.mom60 / 100 * 0.18));
+  const isCoreBullTrend = ma5 > ma10 && ma10 > ma20 && ma20 > ma60;
+  const maBullishCount = [ma5 > ma10, ma10 > ma20, ma20 > ma60].filter(Boolean).length;
+  const macdValue = roundOne(stock.mom20 * 0.45 + stock.mom60 * 0.18 + (stock.volume - 1) * 5);
+  const macdSignal = macdValue >= 5 ? "MACD 強多" : macdValue >= 0 ? "MACD 偏多" : "MACD 偏弱";
+  const trendText = isCoreBullTrend ? "均線多頭排列" : maBullishCount === 2 ? "均線偏多" : "均線未轉強";
+  const backtestWinRate = Math.round(clamp(48 + stock.mom20 * 1.2 + stock.volume * 5 - stock.volatility * 0.35, 35, 78));
+  const techScore = Math.round(clamp(maBullishCount * 18 + (isCoreBullTrend ? 12 : -8) + macdValue * 2.2 + stock.volume * 12 + backtestWinRate * 0.25, 0, 100));
+
+  return {
+    ma5,
+    ma10,
+    ma20,
+    ma60,
+    isCoreBullTrend,
+    maBullishCount,
+    macdValue,
+    macdSignal,
+    trendText,
+    backtestWinRate,
+    techScore
+  };
+}
+
+function aiPickScore(stock) {
+  const profile = technicalProfile(stock);
+  const chipScore = clamp((stock.flow5 + 2500) / 95, 0, 100);
+  const momentumScore = clamp(stock.mom20 * 4 + stock.mom60 * 1.25, 0, 100);
+  const riskPenalty = stock.risk === "高波動" ? 12 : stock.risk === "觀望" ? 8 : 0;
+  const trendGate = profile.isCoreBullTrend ? 0 : 45;
+  return Math.round(clamp(stock.score * 0.28 + chipScore * 0.22 + momentumScore * 0.2 + profile.techScore * 0.24 - riskPenalty - trendGate, 0, 100));
+}
+
+function rsiValue(stock) {
+  return Math.round(clamp(50 + stock.mom20 * 1.25 + stock.mom60 * 0.35 + (stock.volume - 1) * 8 - stock.volatility * 0.22, 18, 86));
+}
+
+function mainForceFlow(stock) {
+  return Math.round(stock.foreign * 0.35 + stock.trust * 0.7 + stock.dealer * 0.65 + stock.flow5 * 0.28);
+}
+
+function technicalSummary(stock) {
+  if (stock.isCoreBullTrend && stock.macdValue > 0 && rsiValue(stock) < 78) return "5、10、20、60 日均線呈現多頭排列，多方趨勢完整";
+  if (!stock.isCoreBullTrend && stock.macdValue >= 0) return "尚未符合 5、10、20、60 日均線多頭排列，因此不列為正式看多推薦";
+  if (stock.macdValue < 0 || stock.mom20 < 0) return "技術面偏弱，先以反彈或整理看待";
+  return "技術面中性，等待價格突破或籌碼轉強";
+}
+
+function chipSummary(stock) {
+  const force = mainForceFlow(stock);
+  if (stock.flow5 > 0 && force > 0) return "法人與主力估算同步偏買，籌碼面加分";
+  if (stock.flow5 > 0 && force <= 0) return "法人偏買，但主力估算未同步，追價要保守";
+  if (stock.flow5 < 0 && force < 0) return "法人與主力估算同步調節，短線風險較高";
+  return "籌碼分歧，適合等待更明確方向";
+}
+
+function tradePlan(stock) {
+  const rsi = rsiValue(stock);
+  const trendBonus = stock.maBullishCount === 3 ? 0.02 : stock.maBullishCount === 2 ? 0.01 : -0.005;
+  const riskBuffer = clamp(stock.volatility / 100 * 0.32, 0.025, 0.1);
+  const support = roundOne(Math.min(stock.ma20, stock.price * (1 - riskBuffer)));
+  const ma20DeductionPrice = roundOne(stock.price / (1 + stock.mom20 / 100));
+  const buyLow = roundOne(support * (1 - 0.012));
+  const buyHigh = roundOne(Math.min(stock.price * (1 - 0.015), stock.ma10 * (1 + 0.006)));
+  const resistance = roundOne(stock.price * (1 + clamp(stock.mom20 / 100 * 0.42 + trendBonus, 0.035, 0.16)));
+  const smallStopLoss = ma20DeductionPrice;
+  const bigStopLoss = stock.ma60;
+  const sellLow = roundOne(resistance * (1 - 0.012));
+  const sellHigh = roundOne(resistance * (1 + 0.018));
+  const action =
+    stock.isCoreBullTrend && stock.score >= 72 && stock.flow5 > 0 && stock.macdValue > 0 && rsi < 76
+      ? "偏多觀察"
+      : stock.flow5 < 0 || stock.macdValue < 0
+        ? "保守觀望"
+        : "區間操作";
+
+  return { action, buyLow, buyHigh, sellLow, sellHigh, smallStopLoss, bigStopLoss, ma20DeductionPrice, resistance, support };
+}
+
+function analysisScore(stock) {
+  const rsi = rsiValue(stock);
+  const forceScore = clamp((mainForceFlow(stock) + 2500) / 70, 0, 100);
+  const rsiScore = rsi > 78 ? 48 : rsi < 35 ? 45 : 78;
+  return Math.round(clamp(stock.score * 0.3 + stock.techScore * 0.24 + forceScore * 0.22 + rsiScore * 0.12 + stock.backtestWinRate * 0.12, 0, 100));
+}
+
 function scoreStock(stock) {
   const w = weights[state.mode];
   const flowScore = clamp((stock.flow5 + 3000) / 120, 0, 100);
@@ -154,7 +334,17 @@ function enrich(stock) {
       : stock.flow5 < 0 || stock.mom20 < 0
         ? "觀望"
         : "可追蹤";
-  return { ...stock, score, strength, risk };
+  const profile = technicalProfile(stock);
+  return {
+    ...stock,
+    score,
+    aiPickScore: aiPickScore({ ...stock, score, risk }),
+    strength,
+    risk,
+    ...profile,
+    flow20: estimateFlow(stock, 20),
+    flow60: estimateFlow(stock, 60)
+  };
 }
 
 function baseFilter(list) {
@@ -166,6 +356,39 @@ function baseFilter(list) {
       if (!keyword) return true;
       return stock.code.includes(keyword) || stock.name.toLowerCase().includes(keyword) || stock.sector.toLowerCase().includes(keyword);
     });
+}
+
+function normalizeConditionValue(metric, rawValue) {
+  if (metric.type === "number") return Number(rawValue);
+  return String(rawValue);
+}
+
+function compareCondition(stockValue, operator, conditionValue, type) {
+  if (type === "number") {
+    const left = Number(stockValue);
+    const right = Number(conditionValue);
+    if (operator === "gte") return left >= right;
+    if (operator === "lte") return left <= right;
+    if (operator === "gt") return left > right;
+    if (operator === "lt") return left < right;
+    return left === right;
+  }
+  return String(stockValue) === String(conditionValue);
+}
+
+function conditionText(condition) {
+  const metric = conditionMetrics[condition.metric];
+  const operator = operatorOptions[metric.type].find((item) => item.value === condition.operator);
+  return `${metric.label} ${operator?.label || ""} ${condition.value}${metric.suffix || ""}`;
+}
+
+function applyCustomConditions(list) {
+  return list.filter((stock) =>
+    screenerState.conditions.every((condition) => {
+      const metric = conditionMetrics[condition.metric];
+      return compareCondition(metric.value(stock), condition.operator, condition.value, metric.type);
+    })
+  );
 }
 
 function getViewStocks() {
@@ -180,16 +403,15 @@ function getViewStocks() {
     return result.slice(0, state.strongLimit);
   }
 
-  if (state.view === "buy") {
-    list = list.filter((stock) => stock.flow5 > 0);
-    result = baseFilter(list).sort((a, b) => b.flow5 - a.flow5);
-    return result.slice(0, DISPLAY_LIMIT);
-  }
-
-  if (state.view === "sell") {
-    list = list.filter((stock) => stock.flow5 < 0);
-    result = baseFilter(list).sort((a, b) => a.flow5 - b.flow5);
-    return result.slice(0, DISPLAY_LIMIT);
+  if (state.view === "institution") {
+    list = list
+      .map((stock) => ({ ...stock, activeFlow: estimateFlow(stock, state.buyPeriod) }))
+      .filter((stock) => (state.institutionDirection === "buy" ? stock.activeFlow > 0 : stock.activeFlow < 0));
+    result = baseFilter(list).sort((a, b) => {
+      if (state.institutionDirection === "buy") return b.activeFlow - a.activeFlow || b.score - a.score;
+      return a.activeFlow - b.activeFlow || b.volatility - a.volatility;
+    });
+    return result.slice(0, state.buyLimit);
   }
 
   if (state.view === "momentum") {
@@ -199,17 +421,7 @@ function getViewStocks() {
   }
 
   if (state.view === "screener") {
-    list = list
-      .filter((stock) => screenerState.sector === "all" || stock.sector === screenerState.sector)
-      .filter((stock) => {
-        if (screenerState.flow === "buy") return stock.flow5 > 0;
-        if (screenerState.flow === "sell") return stock.flow5 < 0;
-        return true;
-      })
-      .filter((stock) => stock.mom20 >= screenerState.minMomentum)
-      .filter((stock) => stock.pe <= screenerState.maxPe)
-      .filter((stock) => !screenerState.excludeRisk || stock.risk !== "高波動")
-      .filter((stock) => !screenerState.volumeOnly || stock.volume >= 1.15);
+    list = screenerState.hasRun ? applyCustomConditions(list) : list;
     result = baseFilter(list).sort((a, b) => b.score - a.score || b.mom20 - a.mom20);
     return result.slice(0, DISPLAY_LIMIT);
   }
@@ -265,8 +477,9 @@ function renderTable(list) {
 
   els.table.innerHTML = list
     .map(
-      (stock) => `
+      (stock, index) => `
         <tr>
+          <td><span class="rank-number">${index + 1}</span></td>
           <td>
             <div class="stock-cell">
               <strong>${stock.name}</strong>
@@ -274,17 +487,12 @@ function renderTable(list) {
             </div>
           </td>
           <td>${stock.sector}</td>
-          <td><span class="tag good">${stock.score}</span></td>
-          <td class="${stock.flow5 >= 0 ? "positive" : "negative"}">${stock.flow5 >= 0 ? "+" : ""}${formatNumber(stock.flow5)} 張</td>
-          <td class="${stock.foreign >= 0 ? "positive" : "negative"}">${stock.foreign >= 0 ? "+" : ""}${formatNumber(stock.foreign)}</td>
-          <td class="${stock.trust >= 0 ? "positive" : "negative"}">${stock.trust >= 0 ? "+" : ""}${formatNumber(stock.trust)}</td>
           <td class="${(stock.activeMomentum ?? stock.mom20) >= 0 ? "positive" : "negative"}">${formatPercent(stock.activeMomentum ?? stock.mom20)}</td>
-          <td>
-            <div class="bar" title="${stock.volume} 倍">
-              <span style="width:${clamp(stock.volume * 48, 12, 100)}%"></span>
-            </div>
-          </td>
-          <td><span class="tag ${riskClass(stock.risk)}">${stock.risk}</span></td>
+          <td class="${(stock.activeFlow ?? stock.flow5) >= 0 ? "positive" : "negative"}">${(stock.activeFlow ?? stock.flow5) >= 0 ? "+" : ""}${formatNumber(stock.activeFlow ?? stock.flow5)} 張</td>
+          <td class="${stock.flow20 >= 0 ? "positive" : "negative"}">${stock.flow20 >= 0 ? "+" : ""}${formatNumber(stock.flow20)} 張</td>
+          <td class="${stock.flow60 >= 0 ? "positive" : "negative"}">${stock.flow60 >= 0 ? "+" : ""}${formatNumber(stock.flow60)} 張</td>
+          <td><span class="tag ${momentumPower(stock) >= 70 ? "good" : "watch"}">${momentumPower(stock)}</span></td>
+          <td><span class="tag good">${stock.score}</span></td>
         </tr>
       `
     )
@@ -292,19 +500,50 @@ function renderTable(list) {
 }
 
 function renderTopPick(list) {
-  const top = list[0] || stocks.map(enrich).sort((a, b) => b.score - a.score)[0];
-  els.topBadge.textContent = `${top.score} 分`;
-  els.topPick.innerHTML = `
-    <div class="pick-name">
-      <strong>${top.name}</strong>
-      <span class="pick-code">${top.code}</span>
-    </div>
-    <ul class="reason-list">
-      <li>法人近 5 日${top.flow5 >= 0 ? "買超" : "賣超"} ${formatNumber(Math.abs(top.flow5))} 張，外資 ${top.foreign >= 0 ? "偏多" : "偏空"}。</li>
-      <li>20 日動量 ${formatPercent(top.mom20)}，60 日動量 ${formatPercent(top.mom60)}，量能 ${top.volume} 倍。</li>
-      <li>AI 分數 ${top.score}，風險標籤為「${top.risk}」。正式交易前仍需確認基本面與停損位置。</li>
-    </ul>
-  `;
+  const picks = stocks
+    .map(enrich)
+    .filter((stock) => stock.isCoreBullTrend)
+    .sort((a, b) => b.aiPickScore - a.aiPickScore || b.flow5 - a.flow5)
+    .slice(0, 3);
+  if (!picks.length) {
+    els.topBadge.textContent = "--";
+    els.topPick.innerHTML = `
+      <div class="empty-condition">
+        <strong>目前沒有符合核心均線多頭排列的標的</strong>
+        <span>推薦候選必須先符合 5 日線 > 10 日線 > 20 日線 > 60 日線，再看法人、MACD、RSI 與量能。</span>
+      </div>
+    `;
+    return;
+  }
+  const best = picks[0];
+  els.topBadge.textContent = `${best.aiPickScore} 分`;
+  els.topPick.innerHTML = picks
+    .map(
+      (stock, index) => `
+        <article class="pick-card">
+          <div class="pick-card-head">
+            <span class="pick-rank">Top ${index + 1}</span>
+            <span class="score-badge">${stock.aiPickScore}</span>
+          </div>
+          <div class="pick-name">
+            <strong>${stock.name}</strong>
+            <span class="pick-code">${stock.code}</span>
+          </div>
+          <div class="pick-metrics">
+            <span>${stock.sector}</span>
+            <span>${stock.macdSignal}</span>
+            <span>${stock.trendText}</span>
+            <span>回測勝率 ${stock.backtestWinRate}%</span>
+          </div>
+          <ul class="reason-list">
+            <li>法人近 5 日${stock.flow5 >= 0 ? "買超" : "賣超"} ${formatNumber(Math.abs(stock.flow5))} 張，20 日動量 ${formatPercent(stock.mom20)}。</li>
+            <li>核心均線：MA5 ${stock.ma5} > MA10 ${stock.ma10} > MA20 ${stock.ma20} > MA60 ${stock.ma60}。</li>
+            <li>AI 判斷：通過均線多頭門檻，技術分 ${stock.techScore}、風險「${stock.risk}」。</li>
+          </ul>
+        </article>
+      `
+    )
+    .join("");
 }
 
 function renderMetrics(list, sectors) {
@@ -316,6 +555,18 @@ function renderMetrics(list, sectors) {
   els.avgScore.textContent = Math.round(avg);
   els.netFlow.textContent = `${netFlow >= 0 ? "+" : ""}${formatNumber(netFlow)}`;
   els.hotSector.textContent = hotSector;
+}
+
+function renderMarketBrief(sectors) {
+  if (!els.capitalSector) return;
+  const sector = sectors[0];
+  const totalFlow = stocks.reduce((sum, stock) => sum + stock.flow5, 0);
+  els.capitalSector.textContent = sector?.sector || "--";
+  els.capitalSectorNote.textContent = sector
+    ? `產業強勢分數 ${sector.sectorScore}，法人${sector.flow >= 0 ? "買超" : "賣超"} ${formatNumber(Math.abs(sector.flow))} 張`
+    : "尚無產業資料";
+  els.institutionTotal.textContent = `${totalFlow >= 0 ? "+" : ""}${formatNumber(totalFlow)} 張`;
+  els.institutionTotal.className = totalFlow >= 0 ? "positive" : "negative";
 }
 
 function renderSectors(sectors) {
@@ -336,6 +587,176 @@ function renderSectors(sectors) {
       `
     )
     .join("");
+}
+
+function setActiveMetric(metricKey) {
+  const metric = conditionMetrics[metricKey];
+  if (!metric) return;
+  screenerState.activeMetric = metricKey;
+  const operators = operatorOptions[metric.type];
+  els.conditionOperator.innerHTML = operators.map((operator) => `<option value="${operator.value}">${operator.label}</option>`).join("");
+
+  if (metric.type === "select") {
+    const options = metric.options();
+    els.conditionValue.outerHTML = `<select id="conditionValue">${options
+      .map((option) => `<option value="${option}">${option}</option>`)
+      .join("")}</select>`;
+    els.conditionValue = document.querySelector("#conditionValue");
+  } else if (els.conditionValue.tagName.toLowerCase() !== "input") {
+    els.conditionValue.outerHTML = `<input id="conditionValue" type="number" step="0.1" />`;
+    els.conditionValue = document.querySelector("#conditionValue");
+  } else {
+    els.conditionValue.type = "number";
+    els.conditionValue.step = "0.1";
+  }
+
+  els.conditionValue.value = metric.defaultValue;
+  renderScreenerBuilder();
+}
+
+function renderScreenerBuilder() {
+  if (!els.conditionMetricList) return;
+  const group = conditionGroups[screenerState.activeGroup];
+  els.conditionGroupTitle.textContent = group.title;
+  els.conditionGroupHint.textContent = group.hint;
+  els.conditionMetricList.innerHTML = group.metrics
+    .map((metricKey) => {
+      const metric = conditionMetrics[metricKey];
+      return `<button class="condition-metric ${screenerState.activeMetric === metricKey ? "active" : ""}" data-metric="${metricKey}" type="button">${metric.label}</button>`;
+    })
+    .join("");
+
+  els.selectedConditions.innerHTML = screenerState.conditions.length
+    ? screenerState.conditions
+        .map(
+          (condition, index) => `
+            <div class="condition-chip">
+              <span>${conditionText(condition)}</span>
+              <button data-remove-condition="${index}" type="button">移除</button>
+            </div>
+          `
+        )
+        .join("")
+    : `<div class="empty-condition"><strong>尚未加入條件</strong><span>從左側挑選指標，設定數值後新增。</span></div>`;
+
+  document.querySelectorAll(".condition-metric").forEach((button) => {
+    button.addEventListener("click", () => setActiveMetric(button.dataset.metric));
+  });
+
+  document.querySelectorAll("[data-remove-condition]").forEach((button) => {
+    button.addEventListener("click", () => {
+      screenerState.conditions.splice(Number(button.dataset.removeCondition), 1);
+      screenerState.hasRun = true;
+      render();
+    });
+  });
+}
+
+function findStockByCode(code) {
+  const normalized = code.trim();
+  if (!normalized) return null;
+  return stocks.map(enrich).find((stock) => stock.code === normalized);
+}
+
+function renderStockAnalysis(code = "") {
+  if (!els.stockAnalysisResult) return;
+  const stock = findStockByCode(code);
+
+  if (!code.trim()) {
+    els.stockAnalysisResult.innerHTML = `
+      <div class="empty-condition">
+        <strong>尚未選擇股票</strong>
+        <span>輸入代碼後，系統會依示範資料產生量化分析。正式接 API 後可分析全市場股票。</span>
+      </div>
+    `;
+    return;
+  }
+
+  if (!stock) {
+    els.stockAnalysisResult.innerHTML = `
+      <div class="empty-condition">
+        <strong>找不到 ${code}</strong>
+        <span>目前展示資料沒有這檔股票；接上全市場 API 後就能查詢更多代碼。</span>
+      </div>
+    `;
+    return;
+  }
+
+  const rsi = rsiValue(stock);
+  const force = mainForceFlow(stock);
+  const plan = tradePlan(stock);
+  const totalScore = analysisScore(stock);
+  const rsiLabel = rsi >= 75 ? "偏熱" : rsi <= 35 ? "偏冷" : "健康區間";
+  const macdTrend = stock.macdValue > 5 ? "強多" : stock.macdValue >= 0 ? "偏多" : "偏弱";
+  const maText = `${stock.trendText}，MA5 ${stock.ma5} / MA10 ${stock.ma10} / MA20 ${stock.ma20} / MA60 ${stock.ma60}`;
+  const maSignal = stock.isCoreBullTrend ? "bullish" : stock.maBullishCount <= 1 && stock.mom20 < 0 ? "bearish" : "neutral";
+  const macdSignal = stock.macdValue >= 0 && rsi < 78 ? "bullish" : stock.macdValue < 0 ? "bearish" : "neutral";
+  const chipSignal = stock.flow5 > 0 ? "bullish" : stock.flow5 < 0 ? "bearish" : "neutral";
+  const forceSignal = force > 0 ? "bullish" : force < 0 ? "bearish" : "neutral";
+  const summary = `${stock.name} 目前量化評分 ${totalScore} 分，${technicalSummary(stock)}；${chipSummary(stock)}。若要操作，較合理的做法是等待價格靠近量化買點區間，不追高；短線小停損看 20 日均線扣抵價 ${plan.smallStopLoss}，若跌破代表 20MA 容易轉下，波段大停損則看季線 ${plan.bigStopLoss}。`;
+
+  els.stockAnalysisResult.innerHTML = `
+    <div class="analysis-hero">
+      <div>
+        <p class="eyebrow">Analysis Result</p>
+        <h3>${stock.name} <span>${stock.code}</span></h3>
+        <p>${stock.sector} · 現價 ${stock.price} 元 · ${plan.action}</p>
+      </div>
+      <span class="analysis-score">${totalScore} 分</span>
+    </div>
+
+    <div class="analysis-grid">
+      <article class="analysis-card signal-card ${maSignal}">
+        <span>均線與趨勢</span>
+        <strong>${stock.trendText}</strong>
+        <p>${maText}。看多推薦必要條件：5 日線 > 10 日線 > 20 日線 > 60 日線。</p>
+      </article>
+      <article class="analysis-card signal-card ${macdSignal}">
+        <span>MACD / RSI</span>
+        <strong>${macdTrend} · RSI ${rsi}</strong>
+        <p>MACD 強度 ${stock.macdValue}，RSI 位於${rsiLabel}，搭配 20 日漲幅 ${formatPercent(stock.mom20)}。</p>
+      </article>
+      <article class="analysis-card signal-card ${chipSignal}">
+        <span>法人籌碼</span>
+        <strong>${stock.flow5 >= 0 ? "+" : ""}${formatNumber(stock.flow5)} 張</strong>
+        <p>外資 ${stock.foreign >= 0 ? "+" : ""}${formatNumber(stock.foreign)}、投信 ${stock.trust >= 0 ? "+" : ""}${formatNumber(stock.trust)}、自營商 ${stock.dealer >= 0 ? "+" : ""}${formatNumber(stock.dealer)}。</p>
+      </article>
+      <article class="analysis-card signal-card ${forceSignal}">
+        <span>主力估算</span>
+        <strong class="${force >= 0 ? "positive" : "negative"}">${force >= 0 ? "+" : ""}${formatNumber(force)} 張</strong>
+        <p>${chipSummary(stock)} 量能約 ${stock.volume} 倍，波動率 ${stock.volatility}。</p>
+      </article>
+    </div>
+
+    <div class="trade-plan">
+      <article>
+        <span>量化買點</span>
+        <strong>${plan.buyLow} - ${plan.buyHigh}</strong>
+        <small>偏向等待回測支撐或短均附近，不建議用示範資料追價。</small>
+      </article>
+      <article>
+        <span>量化賣點</span>
+        <strong>${plan.sellLow} - ${plan.sellHigh}</strong>
+        <small>接近壓力區可分批停利，若量能失速需降低部位。</small>
+      </article>
+      <article>
+        <span>小停損</span>
+        <strong>${plan.smallStopLoss}</strong>
+        <small>20MA 扣抵價；跌破後 20 日均線容易轉下，代表短線趨勢可能反轉。</small>
+      </article>
+      <article>
+        <span>大停損</span>
+        <strong>${plan.bigStopLoss}</strong>
+        <small>季線，也就是 60 日均線；跌破後代表波段趨勢假設明顯轉弱。</small>
+      </article>
+    </div>
+
+    <div class="analysis-summary">
+      <strong>AI 總結</strong>
+      <p>${summary}</p>
+      <small>以上為量化模型與展示資料產生的研究參考，不是保證獲利或正式投資建議。</small>
+    </div>
+  `;
 }
 
 function addMessage(type, text) {
@@ -447,9 +868,20 @@ function updateCopy() {
   const copy = viewCopy[state.view];
   els.viewTitle.textContent = copy.title;
   els.viewSubtitle.textContent = copy.subtitle;
-  els.tableTitle.textContent = copy.table;
+  els.viewSubtitle.classList.toggle("is-hidden", !copy.subtitle);
+  els.tableTitle.textContent =
+    state.view === "institution"
+      ? `法人${state.institutionDirection === "buy" ? "買超" : "賣超"}排行`
+      : copy.table;
   els.filterLabel.textContent = weights[state.mode].label;
-  els.momentumHeader.textContent = state.view === "strong" ? `${state.strongPeriod} 日漲幅` : "20 日動量";
+  els.momentumHeader.textContent = state.view === "strong" ? `${state.strongPeriod} 日漲幅` : "20 日漲幅";
+  els.flowHeader.textContent = state.view === "institution" ? `法人 ${state.buyPeriod} 日` : "法人 5 日";
+  if (els.institutionHint) {
+    els.institutionHint.textContent =
+      state.institutionDirection === "buy"
+        ? "排名依所選區間的法人合計買超張數由高到低排列。"
+        : "排名依所選區間的法人合計賣超張數由高到低排列。";
+  }
 }
 
 function updateVisibleSections() {
@@ -470,10 +902,10 @@ function setView(view) {
 }
 
 function updateOutputs() {
-  els.scoreOutput.value = state.minScore;
-  els.flowOutput.value = `${formatNumber(state.minFlow)} 張`;
-  els.momentumOutput.value = `${screenerState.minMomentum}%`;
-  els.peOutput.value = screenerState.maxPe;
+  if (els.scoreOutput) els.scoreOutput.value = state.minScore;
+  if (els.flowOutput) els.flowOutput.value = `${formatNumber(state.minFlow)} 張`;
+  if (els.momentumOutput) els.momentumOutput.value = `${screenerState.minMomentum || 0}%`;
+  if (els.peOutput) els.peOutput.value = screenerState.maxPe || 40;
   els.updatedAt.textContent = new Intl.DateTimeFormat("zh-TW", {
     dateStyle: "medium",
     timeStyle: "short"
@@ -481,6 +913,7 @@ function updateOutputs() {
 }
 
 function syncSectorOptions() {
+  if (!els.sectorFilter) return;
   const current = els.sectorFilter.value || "all";
   const sectors = [...new Set(stocks.map((stock) => stock.sector))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
   els.sectorFilter.innerHTML = `<option value="all">全部產業</option>${sectors
@@ -498,13 +931,16 @@ function render() {
   const sectors = getSectors();
   renderMetrics(list, sectors);
   renderTopPick(list);
+  renderMarketBrief(sectors);
   renderSectors(sectors);
+  renderScreenerBuilder();
+  if (state.view === "analysis") renderStockAnalysis(els.analysisCodeInput?.value || "");
   renderTable(list);
   drawChart(list);
 }
 
 function initChat() {
-  addMessage("ai", "我可以先用目前資料回答：強勢股、產業強勢度、法人買超、法人賣超、動量排行與 AI 選股。正式版可接 OpenAI API，回答會更完整。");
+  addMessage("ai", "我可以先用目前資料回答：強勢股、產業強勢度、法人買賣超、動量排行與 AI 選股。正式版可接 OpenAI API，回答會更完整。");
 }
 
 document.querySelectorAll(".nav-item").forEach((button) => {
@@ -528,76 +964,186 @@ document.querySelectorAll(".segment").forEach((button) => {
   });
 });
 
-document.querySelectorAll(".period-option").forEach((button) => {
+document.querySelectorAll("[data-strong-period]").forEach((button) => {
   button.addEventListener("click", () => {
-    document.querySelectorAll(".period-option").forEach((item) => item.classList.remove("active"));
+    document.querySelectorAll("[data-strong-period]").forEach((item) => item.classList.remove("active"));
     button.classList.add("active");
     state.strongPeriod = Number(button.dataset.strongPeriod);
     render();
   });
 });
 
-els.strongLimitSelect.addEventListener("change", (event) => {
-  state.strongLimit = Number(event.target.value);
+function applyStrongLimit() {
+  const nextLimit = clamp(Number(els.strongLimitInput.value) || 1, 1, 50);
+  state.strongLimit = nextLimit;
+  els.strongLimitInput.value = nextLimit;
   render();
+}
+
+els.strongSearchButton.addEventListener("click", applyStrongLimit);
+
+els.strongLimitInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    applyStrongLimit();
+  }
 });
 
-els.sectorFilter.addEventListener("change", (event) => {
-  screenerState.sector = event.target.value;
-  render();
+document.querySelectorAll(".direction-option").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".direction-option").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    state.institutionDirection = button.dataset.institutionDirection;
+    render();
+  });
 });
 
-els.flowFilter.addEventListener("change", (event) => {
-  screenerState.flow = event.target.value;
-  render();
+document.querySelectorAll(".institution-period-option").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".institution-period-option").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    state.buyPeriod = Number(button.dataset.buyPeriod);
+    render();
+  });
 });
 
-els.momentumRange.addEventListener("input", (event) => {
-  screenerState.minMomentum = Number(event.target.value);
+function applyBuyLimit() {
+  const nextLimit = clamp(Number(els.buyLimitInput.value) || 1, 1, 50);
+  state.buyLimit = nextLimit;
+  els.buyLimitInput.value = nextLimit;
   render();
+}
+
+els.buySearchButton.addEventListener("click", applyBuyLimit);
+
+els.buyLimitInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    applyBuyLimit();
+  }
 });
 
-els.peRange.addEventListener("input", (event) => {
-  screenerState.maxPe = Number(event.target.value);
-  render();
+document.querySelectorAll(".screener-tab").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".screener-tab").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    screenerState.activeGroup = button.dataset.conditionGroup;
+    const firstMetric = conditionGroups[screenerState.activeGroup].metrics[0];
+    setActiveMetric(firstMetric);
+  });
 });
 
-els.riskFilter.addEventListener("change", (event) => {
-  screenerState.excludeRisk = event.target.checked;
-  render();
-});
+if (els.addConditionButton) {
+  els.addConditionButton.addEventListener("click", () => {
+    const metric = conditionMetrics[screenerState.activeMetric];
+    const value = normalizeConditionValue(metric, els.conditionValue.value);
+    if (metric.type === "number" && Number.isNaN(value)) return;
+    screenerState.conditions.push({
+      metric: screenerState.activeMetric,
+      operator: els.conditionOperator.value,
+      value
+    });
+    screenerState.hasRun = true;
+    render();
+  });
+}
 
-els.volumeFilter.addEventListener("change", (event) => {
-  screenerState.volumeOnly = event.target.checked;
-  render();
-});
+if (els.clearConditionsButton) {
+  els.clearConditionsButton.addEventListener("click", () => {
+    screenerState.conditions = [];
+    screenerState.hasRun = false;
+    render();
+  });
+}
 
-els.scoreRange.addEventListener("input", (event) => {
-  state.minScore = Number(event.target.value);
-  render();
-});
+if (els.runScreenerButton) {
+  els.runScreenerButton.addEventListener("click", () => {
+    screenerState.hasRun = true;
+    render();
+  });
+}
 
-els.flowRange.addEventListener("input", (event) => {
-  state.minFlow = Number(event.target.value);
-  render();
-});
+if (els.stockAnalysisForm) {
+  els.stockAnalysisForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    renderStockAnalysis(els.analysisCodeInput.value);
+  });
+}
 
-els.searchInput.addEventListener("input", (event) => {
-  state.search = event.target.value;
-  render();
-});
+if (els.sectorFilter) {
+  els.sectorFilter.addEventListener("change", (event) => {
+    screenerState.sector = event.target.value;
+    render();
+  });
+}
 
-els.refreshButton.addEventListener("click", () => {
-  els.refreshButton.animate(
-    [
-      { transform: "translateY(0)" },
-      { transform: "translateY(-2px)" },
-      { transform: "translateY(0)" }
-    ],
-    { duration: 260, easing: "ease-out" }
-  );
-  render();
-});
+if (els.flowFilter) {
+  els.flowFilter.addEventListener("change", (event) => {
+    screenerState.flow = event.target.value;
+    render();
+  });
+}
+
+if (els.momentumRange) {
+  els.momentumRange.addEventListener("input", (event) => {
+    screenerState.minMomentum = Number(event.target.value);
+    render();
+  });
+}
+
+if (els.peRange) {
+  els.peRange.addEventListener("input", (event) => {
+    screenerState.maxPe = Number(event.target.value);
+    render();
+  });
+}
+
+if (els.riskFilter) {
+  els.riskFilter.addEventListener("change", (event) => {
+    screenerState.excludeRisk = event.target.checked;
+    render();
+  });
+}
+
+if (els.volumeFilter) {
+  els.volumeFilter.addEventListener("change", (event) => {
+    screenerState.volumeOnly = event.target.checked;
+    render();
+  });
+}
+
+if (els.scoreRange) {
+  els.scoreRange.addEventListener("input", (event) => {
+    state.minScore = Number(event.target.value);
+    render();
+  });
+}
+
+if (els.flowRange) {
+  els.flowRange.addEventListener("input", (event) => {
+    state.minFlow = Number(event.target.value);
+    render();
+  });
+}
+
+if (els.searchInput) {
+  els.searchInput.addEventListener("input", (event) => {
+    state.search = event.target.value;
+    render();
+  });
+}
+
+if (els.refreshButton) {
+  els.refreshButton.addEventListener("click", () => {
+    els.refreshButton.animate(
+      [
+        { transform: "translateY(0)" },
+        { transform: "translateY(-2px)" },
+        { transform: "translateY(0)" }
+      ],
+      { duration: 260, easing: "ease-out" }
+    );
+    render();
+  });
+}
 
 els.chatForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -632,6 +1178,7 @@ async function loadMarketData() {
 
 loadMarketData().then(() => {
   syncSectorOptions();
+  setActiveMetric(screenerState.activeMetric);
   render();
   initChat();
 });

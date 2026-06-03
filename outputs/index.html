@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>台股 AI 多功能選股雷達</title>
-    <link rel="stylesheet" href="./styles.css?v=strong-period-1" />
+    <link rel="stylesheet" href="./styles.css?v=ma60-core-1" />
   </head>
   <body>
     <main class="app-shell">
@@ -22,44 +22,12 @@
           <button class="nav-item active" data-view="overview" type="button">主頁</button>
           <button class="nav-item" data-view="strong" type="button">強勢股</button>
           <button class="nav-item" data-view="sectors" type="button">產業強勢度</button>
-          <button class="nav-item" data-view="buy" type="button">法人買超</button>
-          <button class="nav-item" data-view="sell" type="button">法人賣超</button>
+          <button class="nav-item" data-view="institution" type="button">法人買賣超</button>
           <button class="nav-item" data-view="momentum" type="button">動量排行</button>
           <button class="nav-item" data-view="screener" type="button">智慧選股器</button>
-          <button class="nav-item" data-view="ai" type="button">AI 選股</button>
-          <button class="nav-item" data-view="qa" type="button">AI 問答</button>
+          <button class="nav-item" data-view="analysis" type="button">個股分析</button>
+          <button class="nav-item" data-view="qa" type="button">AI 助手</button>
         </nav>
-
-        <section class="control-panel" aria-labelledby="strategy-title">
-          <h2 id="strategy-title">篩選條件</h2>
-          <div class="segmented" role="group" aria-label="策略模式">
-            <button class="segment active" data-mode="balanced" type="button">均衡</button>
-            <button class="segment" data-mode="momentum" type="button">動量</button>
-            <button class="segment" data-mode="chip" type="button">籌碼</button>
-          </div>
-
-          <label class="field">
-            <span>最低 AI 分數</span>
-            <output id="scoreOutput" for="scoreRange">0</output>
-            <input id="scoreRange" type="range" min="0" max="95" value="0" />
-          </label>
-
-          <label class="field">
-            <span>法人 5 日買賣超</span>
-            <output id="flowOutput" for="flowRange">-5,000 張</output>
-            <input id="flowRange" type="range" min="-5000" max="9000" step="250" value="-5000" />
-          </label>
-
-          <label class="field search-field">
-            <span>搜尋股票或產業</span>
-            <input id="searchInput" type="search" placeholder="例如 2330、AI 伺服器" autocomplete="off" />
-          </label>
-
-          <button id="refreshButton" class="primary-action" type="button">
-            <span aria-hidden="true">↻</span>
-            重新計算
-          </button>
-        </section>
 
         <section class="data-note">
           <h2>資料說明</h2>
@@ -86,46 +54,31 @@
           <div>
             <p class="eyebrow">AI Signal Cockpit</p>
             <h2 id="viewTitle">台股 AI 監測主頁</h2>
-            <p id="viewSubtitle" class="subtitle">選擇一個功能開始看盤：強勢股、產業強勢度、法人買超、法人賣超、動量排行與 AI 問答。</p>
+            <p id="viewSubtitle" class="subtitle"></p>
           </div>
         </header>
 
-        <section id="homePanel" class="home-panel page-section" data-section="overview">
-          <button class="feature-card" data-open-view="strong" type="button">
-            <span>01</span>
-            <strong>強勢股</strong>
-            <small>法人、動量、量能同時偏強</small>
-          </button>
-          <button class="feature-card" data-open-view="sectors" type="button">
-            <span>02</span>
-            <strong>產業強勢度</strong>
-            <small>看資金集中在哪些族群</small>
-          </button>
-          <button class="feature-card" data-open-view="buy" type="button">
-            <span>03</span>
-            <strong>法人買超</strong>
-            <small>三大法人近 5 日加碼排行</small>
-          </button>
-          <button class="feature-card" data-open-view="sell" type="button">
-            <span>04</span>
-            <strong>法人賣超</strong>
-            <small>法人調節與風險觀察</small>
-          </button>
-          <button class="feature-card" data-open-view="momentum" type="button">
-            <span>05</span>
-            <strong>動量排行</strong>
-            <small>20 日與 60 日趨勢延續</small>
-          </button>
-          <button class="feature-card" data-open-view="qa" type="button">
-            <span>06</span>
-            <strong>AI 問答</strong>
-            <small>直接問股票、產業、法人籌碼</small>
-          </button>
-          <button class="feature-card" data-open-view="screener" type="button">
-            <span>07</span>
-            <strong>智慧選股器</strong>
-            <small>用多因子條件快速建立名單</small>
-          </button>
+        <section id="homePanel" class="panel home-ai-panel page-section" data-section="overview">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">AI Pick</p>
+              <h3>今日 AI 精選 3 檔</h3>
+            </div>
+            <span id="topBadge" class="score-badge">--</span>
+          </div>
+          <div class="market-brief-grid">
+            <article>
+              <span>資金流向產業</span>
+              <strong id="capitalSector">--</strong>
+              <small id="capitalSectorNote">依法人買超、動量、AI 分數綜合判斷</small>
+            </article>
+            <article>
+              <span>今日法人總買賣超</span>
+              <strong id="institutionTotal">--</strong>
+              <small>示範資料以近 5 日法人流向估算</small>
+            </article>
+          </div>
+          <div id="topPick" class="top-pick top-pick-grid"></div>
         </section>
 
         <section id="strongPeriodPanel" class="panel period-panel page-section" data-section="strong">
@@ -147,18 +100,44 @@
           <div class="strong-output-row">
             <label class="screener-field compact">
               <span>輸出檔數</span>
-              <select id="strongLimitSelect">
-                <option value="5">5 檔</option>
-                <option value="10" selected>10 檔</option>
-                <option value="15">15 檔</option>
-                <option value="20">20 檔</option>
-              </select>
+              <input id="strongLimitInput" type="number" min="1" max="50" step="1" value="10" />
             </label>
+            <button id="strongSearchButton" class="strong-search-button" type="button">搜尋</button>
             <p>排名依所選區間的價格漲幅百分比由高到低排列。</p>
           </div>
         </section>
 
-        <section class="kpi-grid page-section" data-section="overview sectors buy sell momentum screener ai" aria-label="市場摘要">
+        <section id="buyPeriodPanel" class="panel period-panel page-section" data-section="institution">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Institution Window</p>
+              <h3>法人買賣超監測</h3>
+            </div>
+            <span class="muted-label">選擇買超或賣超方向，再依不同天期重新排行法人動作</span>
+          </div>
+          <div class="direction-options" role="group" aria-label="法人買賣超方向">
+            <button class="direction-option active" data-institution-direction="buy" type="button">買超排行</button>
+            <button class="direction-option" data-institution-direction="sell" type="button">賣超排行</button>
+          </div>
+          <div class="period-options" role="group" aria-label="法人買賣超排行區間">
+            <button class="period-option institution-period-option" data-buy-period="1" type="button">1 日</button>
+            <button class="period-option institution-period-option" data-buy-period="3" type="button">3 日</button>
+            <button class="period-option institution-period-option active" data-buy-period="5" type="button">5 日</button>
+            <button class="period-option institution-period-option" data-buy-period="10" type="button">10 日</button>
+            <button class="period-option institution-period-option" data-buy-period="20" type="button">20 日</button>
+            <button class="period-option institution-period-option" data-buy-period="60" type="button">60 日</button>
+          </div>
+          <div class="strong-output-row">
+            <label class="screener-field compact">
+              <span>輸出檔數</span>
+              <input id="buyLimitInput" type="number" min="1" max="50" step="1" value="10" />
+            </label>
+            <button id="buySearchButton" class="strong-search-button" type="button">搜尋</button>
+            <p id="institutionHint">排名依所選區間的法人合計買超張數由高到低排列。</p>
+          </div>
+        </section>
+
+        <section class="kpi-grid page-section" data-section="legacy" aria-label="市場摘要">
           <article class="metric">
             <span>符合檔數</span>
             <strong id="candidateCount">0</strong>
@@ -181,7 +160,7 @@
           </article>
         </section>
 
-        <section class="module-grid page-section" data-section="overview">
+        <section class="module-grid page-section" data-section="legacy">
           <article class="panel chart-panel">
             <div class="panel-heading">
               <div>
@@ -202,13 +181,13 @@
                 <p class="eyebrow">AI Pick</p>
                 <h3>今日首選</h3>
               </div>
-              <span id="topBadge" class="score-badge">--</span>
+              <span class="score-badge">--</span>
             </div>
-            <div id="topPick" class="top-pick"></div>
+            <div class="top-pick"></div>
           </article>
         </section>
 
-        <section id="sectorPanel" class="panel sector-panel page-section" data-section="sectors overview">
+        <section id="sectorPanel" class="panel sector-panel page-section" data-section="sectors">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Sector Strength</p>
@@ -223,7 +202,7 @@
           <div class="panel-heading">
             <div>
               <p class="eyebrow">AI Assistant</p>
-              <h3>AI 問答</h3>
+              <h3>AI 助手</h3>
             </div>
             <span class="muted-label">目前為前端示範，正式版需後端 API key</span>
           </div>
@@ -234,51 +213,98 @@
           </form>
         </section>
 
+        <section id="stockAnalysisPanel" class="panel stock-analysis-panel page-section" data-section="analysis">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Stock Analysis</p>
+              <h3>個股量化分析</h3>
+            </div>
+            <span class="muted-label">輸入股票代碼，分析均線、MACD、RSI、法人與量化買賣區間</span>
+          </div>
+
+          <form id="stockAnalysisForm" class="analysis-search">
+            <label>
+              <span>股票代碼</span>
+              <input id="analysisCodeInput" type="text" inputmode="numeric" placeholder="例如 2330" autocomplete="off" />
+            </label>
+            <button class="strong-search-button" type="submit">分析</button>
+          </form>
+
+          <div id="stockAnalysisResult" class="stock-analysis-result">
+            <div class="empty-condition">
+              <strong>尚未選擇股票</strong>
+              <span>輸入代碼後，系統會依示範資料產生量化分析。正式接 API 後可分析全市場股票。</span>
+            </div>
+          </div>
+        </section>
+
         <section id="screenerPanel" class="panel screener-panel page-section" data-section="screener">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Smart Screener</p>
-              <h3>智慧選股條件</h3>
+              <h3>自訂篩選器</h3>
             </div>
-            <span class="muted-label">多因子條件會即時套用到下方清單</span>
+            <span class="muted-label">從左側分類挑指標，加入條件後按開始篩選</span>
           </div>
-          <div class="screener-grid">
-            <label class="screener-field">
-              <span>產業</span>
-              <select id="sectorFilter">
-                <option value="all">全部產業</option>
-              </select>
-            </label>
-            <label class="screener-field">
-              <span>法人方向</span>
-              <select id="flowFilter">
-                <option value="all">不限制</option>
-                <option value="buy">法人買超</option>
-                <option value="sell">法人賣超</option>
-              </select>
-            </label>
-            <label class="screener-field">
-              <span>最低 20 日動量</span>
-              <output id="momentumOutput" for="momentumRange">0%</output>
-              <input id="momentumRange" type="range" min="-8" max="20" step="1" value="0" />
-            </label>
-            <label class="screener-field">
-              <span>最高 PE</span>
-              <output id="peOutput" for="peRange">40</output>
-              <input id="peRange" type="range" min="8" max="45" step="1" value="40" />
-            </label>
-            <label class="screener-check">
-              <input id="riskFilter" type="checkbox" />
-              <span>排除高波動</span>
-            </label>
-            <label class="screener-check">
-              <input id="volumeFilter" type="checkbox" />
-              <span>只看量能放大</span>
-            </label>
+          <div class="screener-builder">
+            <aside class="screener-tabs" aria-label="篩選分類">
+              <button class="screener-tab active" data-condition-group="suggested" type="button">
+                <span>建議</span>
+                <strong>策略</strong>
+              </button>
+              <button class="screener-tab" data-condition-group="chip" type="button">
+                <span>籌碼</span>
+                <strong>法人</strong>
+              </button>
+              <button class="screener-tab" data-condition-group="technical" type="button">
+                <span>技術</span>
+                <strong>指標</strong>
+              </button>
+              <button class="screener-tab" data-condition-group="basic" type="button">
+                <span>估值</span>
+                <strong>基本面</strong>
+              </button>
+            </aside>
+
+            <section class="condition-picker" aria-label="可新增指標">
+              <div class="condition-picker-head">
+                <h4 id="conditionGroupTitle">建議策略</h4>
+                <span id="conditionGroupHint">常用台股短線與波段篩選條件</span>
+              </div>
+              <div id="conditionMetricList" class="condition-metric-list"></div>
+              <div class="condition-editor">
+                <label>
+                  <span>條件</span>
+                  <select id="conditionOperator"></select>
+                </label>
+                <label>
+                  <span>數值</span>
+                  <input id="conditionValue" type="text" />
+                </label>
+                <button id="addConditionButton" class="strong-search-button" type="button">新增</button>
+              </div>
+            </section>
+
+            <section class="condition-cart" aria-label="已加入條件">
+              <div class="condition-cart-head">
+                <div>
+                  <p class="eyebrow">Filter Rules</p>
+                  <h4>篩選條件</h4>
+                </div>
+                <button id="clearConditionsButton" type="button">清除</button>
+              </div>
+              <div id="selectedConditions" class="selected-conditions">
+                <div class="empty-condition">
+                  <strong>尚未加入條件</strong>
+                  <span>從左側挑選指標，設定數值後新增。</span>
+                </div>
+              </div>
+              <button id="runScreenerButton" class="run-screener-button" type="button">開始篩選</button>
+            </section>
           </div>
         </section>
 
-        <section class="panel table-panel page-section" data-section="strong sectors buy sell momentum screener ai">
+        <section class="panel table-panel page-section" data-section="strong sectors institution momentum screener">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Ranking</p>
@@ -291,15 +317,15 @@
             <table>
               <thead>
                 <tr>
+                  <th>排名</th>
                   <th>股票</th>
                   <th>產業</th>
+                  <th id="momentumHeader">20 日漲幅</th>
+                  <th id="flowHeader">法人 5 日</th>
+                  <th>法人 20 日</th>
+                  <th>法人 60 日</th>
+                  <th>動能</th>
                   <th>AI 分數</th>
-                  <th>法人 5 日</th>
-                  <th>外資</th>
-                  <th>投信</th>
-                  <th id="momentumHeader">20 日動量</th>
-                  <th>量能</th>
-                  <th>風險</th>
                 </tr>
               </thead>
               <tbody id="stockTable"></tbody>
@@ -309,6 +335,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=strong-period-1"></script>
+    <script src="./app.js?v=ma60-core-1"></script>
   </body>
 </html>
