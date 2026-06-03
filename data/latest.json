@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-03T10:36:16.965Z",
+  "updatedAt": "2026-06-03T16:13:33.583Z",
   "timezone": "Asia/Taipei",
   "source": "GitHub Actions 自動更新示範資料",
   "note": "下一階段可在此腳本串接 TWSE、TPEX、FinMind 或券商 API。",
