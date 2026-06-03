@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>台股 AI 多功能選股雷達</title>
-    <link rel="stylesheet" href="./styles.css?v=dark-sidebar-1" />
+    <link rel="stylesheet" href="./styles.css?v=smart-screener-1" />
   </head>
   <body>
     <main class="app-shell">
@@ -25,6 +25,7 @@
           <button class="nav-item" data-view="buy" type="button">法人買超</button>
           <button class="nav-item" data-view="sell" type="button">法人賣超</button>
           <button class="nav-item" data-view="momentum" type="button">動量排行</button>
+          <button class="nav-item" data-view="screener" type="button">智慧選股器</button>
           <button class="nav-item" data-view="ai" type="button">AI 選股</button>
           <button class="nav-item" data-view="qa" type="button">AI 問答</button>
         </nav>
@@ -120,9 +121,14 @@
             <strong>AI 問答</strong>
             <small>直接問股票、產業、法人籌碼</small>
           </button>
+          <button class="feature-card" data-open-view="screener" type="button">
+            <span>07</span>
+            <strong>智慧選股器</strong>
+            <small>用多因子條件快速建立名單</small>
+          </button>
         </section>
 
-        <section class="kpi-grid page-section" data-section="overview strong sectors buy sell momentum ai" aria-label="市場摘要">
+        <section class="kpi-grid page-section" data-section="overview strong sectors buy sell momentum screener ai" aria-label="市場摘要">
           <article class="metric">
             <span>符合檔數</span>
             <strong id="candidateCount">0</strong>
@@ -198,7 +204,51 @@
           </form>
         </section>
 
-        <section class="panel table-panel page-section" data-section="strong sectors buy sell momentum ai">
+        <section id="screenerPanel" class="panel screener-panel page-section" data-section="screener">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Smart Screener</p>
+              <h3>智慧選股條件</h3>
+            </div>
+            <span class="muted-label">多因子條件會即時套用到下方清單</span>
+          </div>
+          <div class="screener-grid">
+            <label class="screener-field">
+              <span>產業</span>
+              <select id="sectorFilter">
+                <option value="all">全部產業</option>
+              </select>
+            </label>
+            <label class="screener-field">
+              <span>法人方向</span>
+              <select id="flowFilter">
+                <option value="all">不限制</option>
+                <option value="buy">法人買超</option>
+                <option value="sell">法人賣超</option>
+              </select>
+            </label>
+            <label class="screener-field">
+              <span>最低 20 日動量</span>
+              <output id="momentumOutput" for="momentumRange">0%</output>
+              <input id="momentumRange" type="range" min="-8" max="20" step="1" value="0" />
+            </label>
+            <label class="screener-field">
+              <span>最高 PE</span>
+              <output id="peOutput" for="peRange">40</output>
+              <input id="peRange" type="range" min="8" max="45" step="1" value="40" />
+            </label>
+            <label class="screener-check">
+              <input id="riskFilter" type="checkbox" />
+              <span>排除高波動</span>
+            </label>
+            <label class="screener-check">
+              <input id="volumeFilter" type="checkbox" />
+              <span>只看量能放大</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel table-panel page-section" data-section="strong sectors buy sell momentum screener ai">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Watchlist</p>
@@ -229,6 +279,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=dark-sidebar-1"></script>
+    <script src="./app.js?v=smart-screener-1"></script>
   </body>
 </html>

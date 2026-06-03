@@ -38,12 +38,13 @@ const weights = {
 };
 
 const viewCopy = {
-  overview: { title: "台股 AI 監測主頁", subtitle: "選擇一個功能開始看盤：強勢股、產業強勢度、法人買超、法人賣超、動量排行與 AI 問答。", table: "候選清單" },
+  overview: { title: "台股 AI 監測主頁", subtitle: "選擇一個功能開始看盤：強勢股、產業強勢度、法人買超、法人賣超、動量排行、智慧選股器與 AI 問答。", table: "候選清單" },
   strong: { title: "強勢股", subtitle: "找出同時具備法人買超、價格動量、量能放大的股票。", table: "強勢股排行" },
   sectors: { title: "產業強勢度", subtitle: "把個股訊號彙整成產業分數，快速判斷資金正在流向哪裡。", table: "產業成分股" },
   buy: { title: "法人買超", subtitle: "聚焦近 5 日三大法人合計買超，並拆看外資、投信、自營商。", table: "法人買超排行" },
   sell: { title: "法人賣超", subtitle: "找出法人連續調節或籌碼轉弱標的，做風險控管與避開清單。", table: "法人賣超排行" },
   momentum: { title: "動量排行", subtitle: "依 20 日與 60 日價格動量、量能變化排序，觀察趨勢延續。", table: "動量排行" },
+  screener: { title: "智慧選股器", subtitle: "用產業、法人方向、動量、PE、量能與風險建立每日候選名單。", table: "智慧篩選結果" },
   ai: { title: "AI 選股", subtitle: "以籌碼、動量、量能與風險加權計算 AI 分數，產生每日追蹤清單。", table: "AI 選股清單" },
   qa: { title: "AI 問答", subtitle: "在網頁內直接詢問強勢股、產業輪動、法人買賣超與 AI 選股理由。", table: "問答參考清單" }
 };
@@ -54,6 +55,15 @@ const state = {
   minScore: 0,
   minFlow: -5000,
   search: ""
+};
+
+const screenerState = {
+  sector: "all",
+  flow: "all",
+  minMomentum: 0,
+  maxPe: 40,
+  excludeRisk: false,
+  volumeOnly: false
 };
 
 const els = {
@@ -76,6 +86,14 @@ const els = {
   viewSubtitle: document.querySelector("#viewSubtitle"),
   tableTitle: document.querySelector("#tableTitle"),
   sectorList: document.querySelector("#sectorList"),
+  sectorFilter: document.querySelector("#sectorFilter"),
+  flowFilter: document.querySelector("#flowFilter"),
+  momentumRange: document.querySelector("#momentumRange"),
+  momentumOutput: document.querySelector("#momentumOutput"),
+  peRange: document.querySelector("#peRange"),
+  peOutput: document.querySelector("#peOutput"),
+  riskFilter: document.querySelector("#riskFilter"),
+  volumeFilter: document.querySelector("#volumeFilter"),
   chatLog: document.querySelector("#chatLog"),
   chatForm: document.querySelector("#chatForm"),
   chatInput: document.querySelector("#chatInput"),
@@ -152,6 +170,22 @@ function getViewStocks() {
   if (state.view === "momentum") {
     list = list.filter((stock) => stock.mom20 > 0 || stock.mom60 > 0);
     result = baseFilter(list).sort((a, b) => b.mom20 + b.mom60 * 0.35 - (a.mom20 + a.mom60 * 0.35));
+    return result.slice(0, DISPLAY_LIMIT);
+  }
+
+  if (state.view === "screener") {
+    list = list
+      .filter((stock) => screenerState.sector === "all" || stock.sector === screenerState.sector)
+      .filter((stock) => {
+        if (screenerState.flow === "buy") return stock.flow5 > 0;
+        if (screenerState.flow === "sell") return stock.flow5 < 0;
+        return true;
+      })
+      .filter((stock) => stock.mom20 >= screenerState.minMomentum)
+      .filter((stock) => stock.pe <= screenerState.maxPe)
+      .filter((stock) => !screenerState.excludeRisk || stock.risk !== "高波動")
+      .filter((stock) => !screenerState.volumeOnly || stock.volume >= 1.15);
+    result = baseFilter(list).sort((a, b) => b.score - a.score || b.mom20 - a.mom20);
     return result.slice(0, DISPLAY_LIMIT);
   }
 
@@ -412,10 +446,22 @@ function setView(view) {
 function updateOutputs() {
   els.scoreOutput.value = state.minScore;
   els.flowOutput.value = `${formatNumber(state.minFlow)} 張`;
+  els.momentumOutput.value = `${screenerState.minMomentum}%`;
+  els.peOutput.value = screenerState.maxPe;
   els.updatedAt.textContent = new Intl.DateTimeFormat("zh-TW", {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(dataMeta.updatedAt));
+}
+
+function syncSectorOptions() {
+  const current = els.sectorFilter.value || "all";
+  const sectors = [...new Set(stocks.map((stock) => stock.sector))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  els.sectorFilter.innerHTML = `<option value="all">全部產業</option>${sectors
+    .map((sector) => `<option value="${sector}">${sector}</option>`)
+    .join("")}`;
+  els.sectorFilter.value = sectors.includes(current) ? current : "all";
+  screenerState.sector = els.sectorFilter.value;
 }
 
 function render() {
@@ -454,6 +500,36 @@ document.querySelectorAll(".segment").forEach((button) => {
     state.mode = button.dataset.mode;
     render();
   });
+});
+
+els.sectorFilter.addEventListener("change", (event) => {
+  screenerState.sector = event.target.value;
+  render();
+});
+
+els.flowFilter.addEventListener("change", (event) => {
+  screenerState.flow = event.target.value;
+  render();
+});
+
+els.momentumRange.addEventListener("input", (event) => {
+  screenerState.minMomentum = Number(event.target.value);
+  render();
+});
+
+els.peRange.addEventListener("input", (event) => {
+  screenerState.maxPe = Number(event.target.value);
+  render();
+});
+
+els.riskFilter.addEventListener("change", (event) => {
+  screenerState.excludeRisk = event.target.checked;
+  render();
+});
+
+els.volumeFilter.addEventListener("change", (event) => {
+  screenerState.volumeOnly = event.target.checked;
+  render();
 });
 
 els.scoreRange.addEventListener("input", (event) => {
@@ -515,6 +591,7 @@ async function loadMarketData() {
 }
 
 loadMarketData().then(() => {
+  syncSectorOptions();
   render();
   initChat();
 });

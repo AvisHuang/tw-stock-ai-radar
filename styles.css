@@ -204,7 +204,8 @@ button {
 }
 
 .search-field input,
-.chat-form input {
+.chat-form input,
+.screener-field select {
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--line-strong);
@@ -531,6 +532,60 @@ button {
   line-height: 1.55;
 }
 
+.screener-panel {
+  border-color: rgba(53, 196, 155, 0.24);
+}
+
+.screener-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.screener-field,
+.screener-check {
+  display: grid;
+  gap: 10px;
+  min-height: 92px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.screener-field span,
+.screener-check span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.screener-field output {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.screener-field input[type="range"] {
+  accent-color: var(--green);
+}
+
+.screener-field select {
+  min-height: 42px;
+}
+
+.screener-check {
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  min-height: 70px;
+}
+
+.screener-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+
 .bar {
   width: 100%;
   min-width: 92px;
@@ -663,7 +718,8 @@ tbody tr:hover {
 
 @media (max-width: 1180px) {
   .home-panel,
-  .sector-list {
+  .sector-list,
+  .screener-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -714,6 +770,7 @@ tbody tr:hover {
   .home-panel,
   .kpi-grid,
   .sector-list,
+  .screener-grid,
   .chat-form {
     grid-template-columns: 1fr;
   }
