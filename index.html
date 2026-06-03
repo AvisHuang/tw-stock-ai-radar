@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>台股 AI 多功能選股雷達</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="台股監測功能">
+        <div class="brand">
+          <div class="brand-mark">TW</div>
+          <div>
+            <p class="eyebrow">Daily Stock Radar</p>
+            <h1>台股 AI 選股</h1>
+          </div>
+        </div>
+
+        <nav class="module-nav" aria-label="功能選單">
+          <button class="nav-item active" data-view="overview" type="button">主頁</button>
+          <button class="nav-item" data-view="strong" type="button">強勢股</button>
+          <button class="nav-item" data-view="sectors" type="button">產業強勢度</button>
+          <button class="nav-item" data-view="buy" type="button">法人買超</button>
+          <button class="nav-item" data-view="sell" type="button">法人賣超</button>
+          <button class="nav-item" data-view="momentum" type="button">動量排行</button>
+          <button class="nav-item" data-view="ai" type="button">AI 選股</button>
+          <button class="nav-item" data-view="qa" type="button">AI 問答</button>
+        </nav>
+
+        <section class="control-panel" aria-labelledby="strategy-title">
+          <h2 id="strategy-title">篩選條件</h2>
+          <div class="segmented" role="group" aria-label="策略模式">
+            <button class="segment active" data-mode="balanced" type="button">均衡</button>
+            <button class="segment" data-mode="momentum" type="button">動量</button>
+            <button class="segment" data-mode="chip" type="button">籌碼</button>
+          </div>
+
+          <label class="field">
+            <span>最低 AI 分數</span>
+            <output id="scoreOutput" for="scoreRange">0</output>
+            <input id="scoreRange" type="range" min="0" max="95" value="0" />
+          </label>
+
+          <label class="field">
+            <span>法人 5 日買賣超</span>
+            <output id="flowOutput" for="flowRange">-5,000 張</output>
+            <input id="flowRange" type="range" min="-5000" max="9000" step="250" value="-5000" />
+          </label>
+
+          <label class="field search-field">
+            <span>搜尋股票或產業</span>
+            <input id="searchInput" type="search" placeholder="例如 2330、AI 伺服器" autocomplete="off" />
+          </label>
+
+          <button id="refreshButton" class="primary-action" type="button">
+            <span aria-hidden="true">↻</span>
+            重新計算
+          </button>
+        </section>
+
+        <section class="data-note">
+          <h2>資料說明</h2>
+          <p>目前是展示用資料。正式上線可串接 TWSE、TPEX、FinMind、券商 API 或自有資料庫。</p>
+          <p class="timestamp">更新時間：<span id="updatedAt">--</span></p>
+        </section>
+
+        <section class="schedule-note">
+          <h2>自動更新</h2>
+          <div class="schedule-row">
+            <span>早上 06:00</span>
+            <strong>盤前資料</strong>
+          </div>
+          <div class="schedule-row">
+            <span>晚上 18:00</span>
+            <strong>收盤法人</strong>
+          </div>
+          <p>正式版會由後端排程更新，網頁自動讀取最新資料。</p>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">AI Signal Cockpit</p>
+            <h2 id="viewTitle">台股 AI 監測主頁</h2>
+            <p id="viewSubtitle" class="subtitle">選擇一個功能開始看盤：強勢股、產業強勢度、法人買超、法人賣超、動量排行與 AI 問答。</p>
+          </div>
+          <div class="market-pill">
+            <span class="pulse" aria-hidden="true"></span>
+            台股收盤掃描
+          </div>
+        </header>
+
+        <section id="homePanel" class="home-panel page-section" data-section="overview">
+          <button class="feature-card" data-open-view="strong" type="button">
+            <span>01</span>
+            <strong>強勢股</strong>
+            <small>法人、動量、量能同時偏強</small>
+          </button>
+          <button class="feature-card" data-open-view="sectors" type="button">
+            <span>02</span>
+            <strong>產業強勢度</strong>
+            <small>看資金集中在哪些族群</small>
+          </button>
+          <button class="feature-card" data-open-view="buy" type="button">
+            <span>03</span>
+            <strong>法人買超</strong>
+            <small>三大法人近 5 日加碼排行</small>
+          </button>
+          <button class="feature-card" data-open-view="sell" type="button">
+            <span>04</span>
+            <strong>法人賣超</strong>
+            <small>法人調節與風險觀察</small>
+          </button>
+          <button class="feature-card" data-open-view="momentum" type="button">
+            <span>05</span>
+            <strong>動量排行</strong>
+            <small>20 日與 60 日趨勢延續</small>
+          </button>
+          <button class="feature-card" data-open-view="qa" type="button">
+            <span>06</span>
+            <strong>AI 問答</strong>
+            <small>直接問股票、產業、法人籌碼</small>
+          </button>
+        </section>
+
+        <section class="kpi-grid page-section" data-section="overview strong sectors buy sell momentum ai" aria-label="市場摘要">
+          <article class="metric">
+            <span>符合檔數</span>
+            <strong id="candidateCount">0</strong>
+            <small>依目前功能與篩選</small>
+          </article>
+          <article class="metric">
+            <span>平均 AI 分數</span>
+            <strong id="avgScore">0</strong>
+            <small>綜合籌碼、動量、風險</small>
+          </article>
+          <article class="metric">
+            <span>法人淨買超</span>
+            <strong id="netFlow">0</strong>
+            <small>近 5 日合計張數</small>
+          </article>
+          <article class="metric">
+            <span>最強產業</span>
+            <strong id="hotSector">--</strong>
+            <small>依產業強勢分數</small>
+          </article>
+        </section>
+
+        <section class="module-grid page-section" data-section="overview">
+          <article class="panel chart-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Momentum Map</p>
+                <h3>法人資金與價格動量</h3>
+              </div>
+              <div class="legend">
+                <span><i class="legend-dot buy"></i>買超</span>
+                <span><i class="legend-dot sell"></i>賣超</span>
+              </div>
+            </div>
+            <canvas id="signalCanvas" width="900" height="420" aria-label="法人資金與價格動量圖"></canvas>
+          </article>
+
+          <article class="panel ai-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">AI Pick</p>
+                <h3>今日首選</h3>
+              </div>
+              <span id="topBadge" class="score-badge">--</span>
+            </div>
+            <div id="topPick" class="top-pick"></div>
+          </article>
+        </section>
+
+        <section id="sectorPanel" class="panel sector-panel page-section" data-section="sectors overview">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Sector Strength</p>
+              <h3>產業強勢度</h3>
+            </div>
+            <span class="muted-label">分數由 AI 分數、法人淨買超、動量平均計算</span>
+          </div>
+          <div id="sectorList" class="sector-list"></div>
+        </section>
+
+        <section id="qaPanel" class="panel qa-panel page-section" data-section="qa">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">AI Assistant</p>
+              <h3>AI 問答</h3>
+            </div>
+            <span class="muted-label">目前為前端示範，正式版需後端 API key</span>
+          </div>
+          <div id="chatLog" class="chat-log" aria-live="polite"></div>
+          <form id="chatForm" class="chat-form">
+            <input id="chatInput" type="text" placeholder="問我：今天強勢股有哪些？法人賣超最多是誰？" />
+            <button type="submit">送出</button>
+          </form>
+        </section>
+
+        <section class="panel table-panel page-section" data-section="strong sectors buy sell momentum ai qa">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Watchlist</p>
+              <h3 id="tableTitle">候選清單</h3>
+            </div>
+            <span id="filterLabel" class="muted-label">均衡策略</span>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>股票</th>
+                  <th>產業</th>
+                  <th>AI 分數</th>
+                  <th>法人 5 日</th>
+                  <th>外資</th>
+                  <th>投信</th>
+                  <th>20 日動量</th>
+                  <th>量能</th>
+                  <th>風險</th>
+                </tr>
+              </thead>
+              <tbody id="stockTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
