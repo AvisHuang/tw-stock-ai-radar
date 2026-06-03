@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>台股 AI 多功能選股雷達</title>
-    <link rel="stylesheet" href="./styles.css?v=smart-screener-1" />
+    <link rel="stylesheet" href="./styles.css?v=strong-period-1" />
   </head>
   <body>
     <main class="app-shell">
@@ -128,7 +128,37 @@
           </button>
         </section>
 
-        <section class="kpi-grid page-section" data-section="overview strong sectors buy sell momentum screener ai" aria-label="市場摘要">
+        <section id="strongPeriodPanel" class="panel period-panel page-section" data-section="strong">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Strength Window</p>
+              <h3>強勢股排行區間</h3>
+            </div>
+            <span class="muted-label">選擇不同天期，排行會依該期間價格漲幅重新排序</span>
+          </div>
+          <div class="period-options" role="group" aria-label="強勢股排行區間">
+            <button class="period-option" data-strong-period="1" type="button">1 日</button>
+            <button class="period-option" data-strong-period="3" type="button">3 日</button>
+            <button class="period-option" data-strong-period="5" type="button">5 日</button>
+            <button class="period-option" data-strong-period="10" type="button">10 日</button>
+            <button class="period-option active" data-strong-period="20" type="button">20 日</button>
+            <button class="period-option" data-strong-period="60" type="button">60 日</button>
+          </div>
+          <div class="strong-output-row">
+            <label class="screener-field compact">
+              <span>輸出檔數</span>
+              <select id="strongLimitSelect">
+                <option value="5">5 檔</option>
+                <option value="10" selected>10 檔</option>
+                <option value="15">15 檔</option>
+                <option value="20">20 檔</option>
+              </select>
+            </label>
+            <p>排名依所選區間的價格漲幅百分比由高到低排列。</p>
+          </div>
+        </section>
+
+        <section class="kpi-grid page-section" data-section="overview sectors buy sell momentum screener ai" aria-label="市場摘要">
           <article class="metric">
             <span>符合檔數</span>
             <strong id="candidateCount">0</strong>
@@ -251,7 +281,7 @@
         <section class="panel table-panel page-section" data-section="strong sectors buy sell momentum screener ai">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Watchlist</p>
+              <p class="eyebrow">Ranking</p>
               <h3 id="tableTitle">候選清單</h3>
             </div>
             <span id="filterLabel" class="muted-label">均衡策略</span>
@@ -267,7 +297,7 @@
                   <th>法人 5 日</th>
                   <th>外資</th>
                   <th>投信</th>
-                  <th>20 日動量</th>
+                  <th id="momentumHeader">20 日動量</th>
                   <th>量能</th>
                   <th>風險</th>
                 </tr>
@@ -279,6 +309,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=smart-screener-1"></script>
+    <script src="./app.js?v=strong-period-1"></script>
   </body>
 </html>

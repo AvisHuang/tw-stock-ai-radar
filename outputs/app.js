@@ -39,7 +39,7 @@ const weights = {
 
 const viewCopy = {
   overview: { title: "台股 AI 監測主頁", subtitle: "選擇一個功能開始看盤：強勢股、產業強勢度、法人買超、法人賣超、動量排行、智慧選股器與 AI 問答。", table: "候選清單" },
-  strong: { title: "強勢股", subtitle: "找出同時具備法人買超、價格動量、量能放大的股票。", table: "強勢股排行" },
+  strong: { title: "強勢股", subtitle: "可切換 1、3、5、10、20、60 日區間，找出各時間週期的強勢排行。", table: "強勢股排行" },
   sectors: { title: "產業強勢度", subtitle: "把個股訊號彙整成產業分數，快速判斷資金正在流向哪裡。", table: "產業成分股" },
   buy: { title: "法人買超", subtitle: "聚焦近 5 日三大法人合計買超，並拆看外資、投信、自營商。", table: "法人買超排行" },
   sell: { title: "法人賣超", subtitle: "找出法人連續調節或籌碼轉弱標的，做風險控管與避開清單。", table: "法人賣超排行" },
@@ -54,7 +54,9 @@ const state = {
   mode: "balanced",
   minScore: 0,
   minFlow: -5000,
-  search: ""
+  search: "",
+  strongPeriod: 20,
+  strongLimit: 10
 };
 
 const screenerState = {
@@ -94,6 +96,8 @@ const els = {
   peOutput: document.querySelector("#peOutput"),
   riskFilter: document.querySelector("#riskFilter"),
   volumeFilter: document.querySelector("#volumeFilter"),
+  strongLimitSelect: document.querySelector("#strongLimitSelect"),
+  momentumHeader: document.querySelector("#momentumHeader"),
   chatLog: document.querySelector("#chatLog"),
   chatForm: document.querySelector("#chatForm"),
   chatInput: document.querySelector("#chatInput"),
@@ -110,6 +114,25 @@ function formatNumber(value) {
 
 function formatPercent(value) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function roundOne(value) {
+  return Math.round(value * 10) / 10;
+}
+
+function periodMomentum(stock, period) {
+  if (period === 20) return stock.mom20;
+  if (period === 60) return stock.mom60;
+
+  const flowPulse = clamp(stock.flow5 / 5000, -1.2, 1.8);
+  const volumePulse = clamp((stock.volume - 1) * 2, -0.6, 1.8);
+  const pulse = flowPulse + volumePulse;
+
+  if (period === 1) return roundOne(stock.mom20 * 0.12 + pulse * 0.65);
+  if (period === 3) return roundOne(stock.mom20 * 0.22 + pulse * 0.85);
+  if (period === 5) return roundOne(stock.mom20 * 0.34 + pulse * 1.05);
+  if (period === 10) return roundOne(stock.mom20 * 0.58 + stock.mom60 * 0.08 + pulse * 0.8);
+  return stock.mom20;
 }
 
 function scoreStock(stock) {
@@ -150,9 +173,11 @@ function getViewStocks() {
   let result;
 
   if (state.view === "strong") {
-    list = list.filter((stock) => stock.strength >= 78 && stock.mom20 > 5 && stock.volume >= 1.05);
-    result = baseFilter(list).sort((a, b) => b.strength - a.strength);
-    return result.slice(0, DISPLAY_LIMIT);
+    list = list
+      .map((stock) => ({ ...stock, activeMomentum: periodMomentum(stock, state.strongPeriod) }))
+      .filter((stock) => stock.activeMomentum > 0);
+    result = baseFilter(list).sort((a, b) => b.activeMomentum - a.activeMomentum || b.volume - a.volume);
+    return result.slice(0, state.strongLimit);
   }
 
   if (state.view === "buy") {
@@ -253,7 +278,7 @@ function renderTable(list) {
           <td class="${stock.flow5 >= 0 ? "positive" : "negative"}">${stock.flow5 >= 0 ? "+" : ""}${formatNumber(stock.flow5)} 張</td>
           <td class="${stock.foreign >= 0 ? "positive" : "negative"}">${stock.foreign >= 0 ? "+" : ""}${formatNumber(stock.foreign)}</td>
           <td class="${stock.trust >= 0 ? "positive" : "negative"}">${stock.trust >= 0 ? "+" : ""}${formatNumber(stock.trust)}</td>
-          <td class="${stock.mom20 >= 0 ? "positive" : "negative"}">${formatPercent(stock.mom20)}</td>
+          <td class="${(stock.activeMomentum ?? stock.mom20) >= 0 ? "positive" : "negative"}">${formatPercent(stock.activeMomentum ?? stock.mom20)}</td>
           <td>
             <div class="bar" title="${stock.volume} 倍">
               <span style="width:${clamp(stock.volume * 48, 12, 100)}%"></span>
@@ -424,6 +449,7 @@ function updateCopy() {
   els.viewSubtitle.textContent = copy.subtitle;
   els.tableTitle.textContent = copy.table;
   els.filterLabel.textContent = weights[state.mode].label;
+  els.momentumHeader.textContent = state.view === "strong" ? `${state.strongPeriod} 日漲幅` : "20 日動量";
 }
 
 function updateVisibleSections() {
@@ -500,6 +526,20 @@ document.querySelectorAll(".segment").forEach((button) => {
     state.mode = button.dataset.mode;
     render();
   });
+});
+
+document.querySelectorAll(".period-option").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".period-option").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    state.strongPeriod = Number(button.dataset.strongPeriod);
+    render();
+  });
+});
+
+els.strongLimitSelect.addEventListener("change", (event) => {
+  state.strongLimit = Number(event.target.value);
+  render();
 });
 
 els.sectorFilter.addEventListener("change", (event) => {
