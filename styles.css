@@ -536,6 +536,51 @@ button {
   border-color: rgba(53, 196, 155, 0.24);
 }
 
+.period-panel {
+  border-color: rgba(53, 196, 155, 0.26);
+}
+
+.period-options {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.period-option {
+  min-height: 50px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #dbe4ec;
+  font-size: 18px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.period-option:hover {
+  border-color: rgba(53, 196, 155, 0.55);
+}
+
+.period-option.active {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.strong-output-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.strong-output-row p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .screener-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -551,6 +596,10 @@ button {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.045);
+}
+
+.screener-field.compact {
+  min-height: 74px;
 }
 
 .screener-field span,
@@ -719,7 +768,8 @@ tbody tr:hover {
 @media (max-width: 1180px) {
   .home-panel,
   .sector-list,
-  .screener-grid {
+  .screener-grid,
+  .period-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -771,6 +821,8 @@ tbody tr:hover {
   .kpi-grid,
   .sector-list,
   .screener-grid,
+  .period-options,
+  .strong-output-row,
   .chat-form {
     grid-template-columns: 1fr;
   }
