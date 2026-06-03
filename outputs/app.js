@@ -332,7 +332,7 @@ function drawChart(list) {
   const pad = 42;
   ctx.clearRect(0, 0, width, height);
 
-  ctx.strokeStyle = "#d7e0e7";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.34)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(pad, height - pad);
@@ -344,7 +344,7 @@ function drawChart(list) {
   for (let i = 1; i <= 4; i += 1) {
     const x = pad + ((width - pad * 2) * i) / 4;
     const y = pad + ((height - pad * 2) * i) / 4;
-    ctx.strokeStyle = "rgba(101, 113, 128, 0.16)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
     ctx.beginPath();
     ctx.moveTo(x, pad);
     ctx.lineTo(x, height - pad);
@@ -353,7 +353,7 @@ function drawChart(list) {
     ctx.stroke();
   }
 
-  ctx.fillStyle = "#657180";
+  ctx.fillStyle = "#aab4c0";
   ctx.font = "12px Microsoft JhengHei, Arial";
   ctx.fillText("法人 5 日買賣超", width - 140, height - 14);
   ctx.save();
@@ -377,7 +377,7 @@ function drawChart(list) {
     ctx.globalAlpha = 1;
 
     if (active) {
-      ctx.fillStyle = "#172029";
+      ctx.fillStyle = "#f5f7fa";
       ctx.font = "700 12px Microsoft JhengHei, Arial";
       ctx.fillText(stock.code, x + 11, y + 4);
     }
