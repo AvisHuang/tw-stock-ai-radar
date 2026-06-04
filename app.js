@@ -62,7 +62,8 @@ const sectorCodes = {
 };
 let dataMeta = {
   source: "內建展示資料",
-  updatedAt: new Date().toISOString()
+  updatedAt: new Date().toISOString(),
+  dataDate: ""
 };
 
 const weights = {
@@ -184,6 +185,7 @@ const els = {
   filterLabel: document.querySelector("#filterLabel"),
   viewTitle: document.querySelector("#viewTitle"),
   viewSubtitle: document.querySelector("#viewSubtitle"),
+  viewDataTime: document.querySelector("#viewDataTime"),
   tableTitle: document.querySelector("#tableTitle"),
   sectorList: document.querySelector("#sectorList"),
   sectorFilter: document.querySelector("#sectorFilter"),
@@ -1762,10 +1764,15 @@ function updateOutputs() {
   if (els.flowOutput) els.flowOutput.value = `${formatNumber(state.minFlow)} 張`;
   if (els.momentumOutput) els.momentumOutput.value = `${screenerState.minMomentum || 0}%`;
   if (els.peOutput) els.peOutput.value = screenerState.maxPe || 40;
-  els.updatedAt.textContent = new Intl.DateTimeFormat("zh-TW", {
+  const updatedAtText = new Intl.DateTimeFormat("zh-TW", {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(dataMeta.updatedAt));
+  const dataDateText = dataMeta.dataDate ? ` ｜資料日：${dataMeta.dataDate}` : "";
+  els.updatedAt.textContent = updatedAtText;
+  if (els.viewDataTime) {
+    els.viewDataTime.textContent = `資料更新：${updatedAtText}${dataDateText}`;
+  }
 }
 
 function syncSectorOptions() {
@@ -2036,13 +2043,15 @@ async function loadMarketData() {
       stocks = payload.stocks;
       dataMeta = {
         source: payload.source || "GitHub Actions 自動更新",
-        updatedAt: payload.updatedAt || new Date().toISOString()
+        updatedAt: payload.updatedAt || new Date().toISOString(),
+        dataDate: payload.dataDate || ""
       };
     }
   } catch (error) {
     dataMeta = {
       source: "內建展示資料",
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      dataDate: ""
     };
   }
 }

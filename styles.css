@@ -305,6 +305,19 @@ button {
   display: none;
 }
 
+.view-data-time {
+  display: inline-flex;
+  align-items: center;
+  margin: 12px 0 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(70, 211, 173, 0.22);
+  border-radius: 8px;
+  background: rgba(70, 211, 173, 0.08);
+  color: #c9d4df;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .home-panel,
 .kpi-grid,
 .module-grid {
