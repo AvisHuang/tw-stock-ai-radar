@@ -75,6 +75,11 @@ const conditionGroups = {
     hint: "常用台股短線與波段篩選條件",
     metrics: ["score", "flow5", "mom20", "volume", "risk"]
   },
+  host: {
+    title: "版主推薦",
+    hint: "均線密集後，近 1 日接近漲停並突破均線密集區",
+    metrics: ["hostPick"]
+  },
   chip: {
     title: "籌碼法人",
     hint: "用三大法人與外資、投信資金流向篩選",
@@ -93,6 +98,7 @@ const conditionGroups = {
 };
 
 const conditionMetrics = {
+  hostPick: { label: "版主推薦", type: "select", defaultValue: "符合", value: (stock) => (isHostPick(stock) ? "符合" : "不符合"), options: () => ["符合", "不符合"] },
   score: { label: "AI 分數", type: "number", defaultValue: 70, value: (stock) => stock.score },
   flow5: { label: "法人 5 日買賣超", type: "number", defaultValue: 1000, value: (stock) => stock.flow5, suffix: "張" },
   flow20: { label: "法人 20 日買賣超", type: "number", defaultValue: 3000, value: (stock) => stock.flow20, suffix: "張" },
@@ -176,7 +182,9 @@ const els = {
   chatLog: document.querySelector("#chatLog"),
   chatForm: document.querySelector("#chatForm"),
   chatInput: document.querySelector("#chatInput"),
-  canvas: document.querySelector("#signalCanvas")
+  canvas: document.querySelector("#signalCanvas"),
+  stockModal: document.querySelector("#stockModal"),
+  stockModalContent: document.querySelector("#stockModalContent")
 };
 
 function clamp(value, min, max) {
@@ -208,6 +216,22 @@ function periodMomentum(stock, period) {
   if (period === 5) return roundOne(stock.mom20 * 0.34 + pulse * 1.05);
   if (period === 10) return roundOne(stock.mom20 * 0.58 + stock.mom60 * 0.08 + pulse * 0.8);
   return stock.mom20;
+}
+
+function movingAverageDensity(stock) {
+  const averages = [stock.ma5, stock.ma10, stock.ma20, stock.ma60];
+  const high = Math.max(...averages);
+  const low = Math.min(...averages);
+  return ((high - low) / stock.price) * 100;
+}
+
+function isHostPick(stock) {
+  const todayChange = periodMomentum(stock, 1);
+  const averages = [stock.ma5, stock.ma10, stock.ma20, stock.ma60];
+  const upperBand = Math.max(...averages);
+  const density = movingAverageDensity(stock);
+
+  return density <= 6 && todayChange >= 9.5 && stock.price >= upperBand;
 }
 
 function estimateFlow(stock, days) {
@@ -286,7 +310,8 @@ function chipSummary(stock) {
 }
 
 function tradePlan(stock) {
-  const rsi = rsiValue(stock);
+  const tech = technicalIndicators(stock);
+  const rsi = tech.rsiLast;
   const trendBonus = stock.maBullishCount === 3 ? 0.02 : stock.maBullishCount === 2 ? 0.01 : -0.005;
   const riskBuffer = clamp(stock.volatility / 100 * 0.32, 0.025, 0.1);
   const support = roundOne(Math.min(stock.ma20, stock.price * (1 - riskBuffer)));
@@ -309,10 +334,464 @@ function tradePlan(stock) {
 }
 
 function analysisScore(stock) {
-  const rsi = rsiValue(stock);
+  const tech = technicalIndicators(stock);
+  const rsi = tech.rsiLast;
   const forceScore = clamp((mainForceFlow(stock) + 2500) / 70, 0, 100);
   const rsiScore = rsi > 78 ? 48 : rsi < 35 ? 45 : 78;
   return Math.round(clamp(stock.score * 0.3 + stock.techScore * 0.24 + forceScore * 0.22 + rsiScore * 0.12 + stock.backtestWinRate * 0.12, 0, 100));
+}
+
+function generateChartSeries(stock) {
+  const points = 42;
+  const start = stock.price / (1 + stock.mom60 / 100);
+  const trend = (stock.price - start) / (points - 1);
+  const volatility = clamp(stock.volatility / 100, 0.08, 0.42);
+
+  return Array.from({ length: points }, (_, index) => {
+    const progress = index / (points - 1);
+    const wave = Math.sin(index * 0.72) * volatility * start * 0.11 + Math.cos(index * 0.31) * volatility * start * 0.08;
+    const close = roundOne(start + trend * index + wave + stock.price * stock.mom20 / 100 * 0.025 * progress);
+    const open = roundOne(index === 0 ? close * (1 - stock.mom20 / 100 / 120) : close - trend * 0.45 - wave * 0.12);
+    const high = roundOne(Math.max(open, close) * (1 + 0.012 + volatility * 0.025));
+    const low = roundOne(Math.min(open, close) * (1 - 0.012 - volatility * 0.02));
+    const volume = Math.round(1000 * stock.volume * (0.72 + progress * 0.5 + Math.abs(wave) / Math.max(stock.price, 1)));
+    return { open, high, low, close, volume };
+  });
+}
+
+function movingAverage(series, windowSize) {
+  return series.map((_, index) => {
+    const from = Math.max(0, index - windowSize + 1);
+    const slice = series.slice(from, index + 1);
+    return slice.reduce((sum, item) => sum + item.close, 0) / slice.length;
+  });
+}
+
+function polyline(points, mapX, mapY) {
+  return points.map((value, index) => `${mapX(index).toFixed(1)},${mapY(value).toFixed(1)}`).join(" ");
+}
+
+function marketLabel(stock) {
+  return stock.market === "tpex" ? "上櫃" : "上市";
+}
+
+function renderTechSvg(stock) {
+  const series = generateChartSeries(stock);
+  const width = 900;
+  const candleHeight = 270;
+  const rsiHeight = 120;
+  const macdHeight = 125;
+  const gap = 26;
+  const pad = { left: 44, right: 28, top: 20, bottom: 22 };
+  const chartWidth = width - pad.left - pad.right;
+  const totalHeight = candleHeight + rsiHeight + macdHeight + gap * 2;
+  const prices = series.flatMap((item) => [item.high, item.low, stock.ma5, stock.ma10, stock.ma20, stock.ma60]);
+  const minPrice = Math.min(...prices) * 0.97;
+  const maxPrice = Math.max(...prices) * 1.03;
+  const mapX = (index) => pad.left + (index / (series.length - 1)) * chartWidth;
+  const mapPrice = (price) => pad.top + ((maxPrice - price) / (maxPrice - minPrice)) * (candleHeight - pad.top - pad.bottom);
+  const candleWidth = Math.max(5, chartWidth / series.length * 0.56);
+  const ma5 = movingAverage(series, 5);
+  const ma10 = movingAverage(series, 10);
+  const ma20 = movingAverage(series, 20);
+  const ma60 = movingAverage(series, 34);
+  const rsiBaseY = candleHeight + gap;
+  const macdBaseY = candleHeight + gap + rsiHeight + gap;
+  const rsiPoints = series.map((_, index) => clamp(rsiValue(stock) - 12 + Math.sin(index * 0.35) * 9 + index * 0.22, 10, 92));
+  const kdPoints = series.map((_, index) => clamp(rsiPoints[index] - 5 + Math.cos(index * 0.28) * 7, 8, 90));
+  const mapOsc = (value) => rsiBaseY + 12 + ((100 - value) / 100) * (rsiHeight - 24);
+  const macdLine = series.map((_, index) => stock.macdValue * (index / (series.length - 1)) + Math.sin(index * 0.22) * 0.7);
+  const signalLine = macdLine.map((value, index) => value * 0.78 + Math.cos(index * 0.18) * 0.35);
+  const macdMax = Math.max(1, ...macdLine.map(Math.abs), ...signalLine.map(Math.abs));
+  const mapMacd = (value) => macdBaseY + macdHeight / 2 - (value / macdMax) * (macdHeight * 0.38);
+  const gridLines = [0.2, 0.4, 0.6, 0.8]
+    .map((ratio) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${(candleHeight * ratio).toFixed(1)}" y2="${(candleHeight * ratio).toFixed(1)}" class="chart-grid" />`)
+    .join("");
+
+  const candles = series
+    .map((item, index) => {
+      const x = mapX(index);
+      const up = item.close >= item.open;
+      const colorClass = up ? "up" : "down";
+      const y = Math.min(mapPrice(item.open), mapPrice(item.close));
+      const height = Math.max(2, Math.abs(mapPrice(item.open) - mapPrice(item.close)));
+      return `
+        <line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${mapPrice(item.high).toFixed(1)}" y2="${mapPrice(item.low).toFixed(1)}" class="candle-wick ${colorClass}" />
+        <rect x="${(x - candleWidth / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${candleWidth.toFixed(1)}" height="${height.toFixed(1)}" rx="1.5" class="candle-body ${colorClass}" />
+      `;
+    })
+    .join("");
+
+  const histogram = macdLine
+    .map((value, index) => {
+      const diff = value - signalLine[index];
+      const x = mapX(index);
+      const zero = mapMacd(0);
+      const y = mapMacd(diff);
+      return `<rect x="${(x - 4).toFixed(1)}" y="${Math.min(y, zero).toFixed(1)}" width="8" height="${Math.max(1, Math.abs(zero - y)).toFixed(1)}" class="macd-bar ${diff >= 0 ? "up" : "down"}" />`;
+    })
+    .join("");
+
+  return `
+    <svg class="tech-svg" viewBox="0 0 ${width} ${totalHeight}" role="img" aria-label="${stock.name} 技術 K 線圖">
+      <rect width="${width}" height="${totalHeight}" class="chart-bg" />
+      ${gridLines}
+      ${candles}
+      <polyline points="${polyline(ma5, mapX, mapPrice)}" class="ma-line ma5" />
+      <polyline points="${polyline(ma10, mapX, mapPrice)}" class="ma-line ma10" />
+      <polyline points="${polyline(ma20, mapX, mapPrice)}" class="ma-line ma20" />
+      <polyline points="${polyline(ma60, mapX, mapPrice)}" class="ma-line ma60" />
+      <text x="${pad.left}" y="${candleHeight - 6}" class="chart-label">5MA ${stock.ma5} · 10MA ${stock.ma10} · 20MA ${stock.ma20} · 60MA ${stock.ma60}</text>
+      <text x="${width - 86}" y="${mapPrice(stock.price) - 8}" class="price-label">${stock.price}</text>
+      <line x1="${pad.left}" x2="${width - pad.right}" y1="${rsiBaseY + rsiHeight - 14}" y2="${rsiBaseY + rsiHeight - 14}" class="chart-grid" />
+      <polyline points="${polyline(rsiPoints, mapX, mapOsc)}" class="osc-line rsi" />
+      <polyline points="${polyline(kdPoints, mapX, mapOsc)}" class="osc-line kd" />
+      <text x="${pad.left}" y="${rsiBaseY + 18}" class="chart-label">KD / RSI · RSI ${rsiValue(stock)}</text>
+      <line x1="${pad.left}" x2="${width - pad.right}" y1="${mapMacd(0).toFixed(1)}" y2="${mapMacd(0).toFixed(1)}" class="chart-grid" />
+      ${histogram}
+      <polyline points="${polyline(macdLine, mapX, mapMacd)}" class="osc-line macd" />
+      <polyline points="${polyline(signalLine, mapX, mapMacd)}" class="osc-line signal" />
+      <text x="${pad.left}" y="${macdBaseY + 18}" class="chart-label">MACD · DIF ${stock.macdValue} · Signal ${roundOne(stock.macdValue * 0.78)}</text>
+    </svg>
+  `;
+}
+
+function generateChartSeries(stock) {
+  if (Array.isArray(stock.history) && stock.history.length >= 2) {
+    return stock.history
+      .map((item) => ({
+        date: item.date,
+        open: Number(item.open),
+        high: Number(item.high),
+        low: Number(item.low),
+        close: Number(item.close),
+        volume: Number(item.volume) || 0,
+        amount: Number(item.amount) || 0
+      }))
+      .filter((item) => item.open > 0 && item.high > 0 && item.low > 0 && item.close > 0)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  }
+
+  const points = 90;
+  const finalClose = Number(stock.price) || 1;
+  const start = finalClose / (1 + (Number(stock.mom60) || 0) / 100);
+  const trendRatio = Math.pow(finalClose / Math.max(start, 0.01), 1 / (points - 1));
+  const volatility = clamp((Number(stock.volatility) || 18) / 100, 0.08, 0.46);
+  const intradayRange = clamp(volatility * 0.11, 0.012, 0.07);
+  const series = [];
+
+  for (let index = 0; index < points; index += 1) {
+    const previousClose = index === 0 ? start : series[index - 1].close;
+    const cycle = Math.sin(index * 0.47) * volatility * 0.34 + Math.cos(index * 0.19) * volatility * 0.18;
+    const closeRaw = index === points - 1 ? finalClose : start * Math.pow(trendRatio, index) * (1 + cycle);
+    const close = roundOne(closeRaw);
+    const bodyBias = Math.sin(index * 0.83) * volatility * 0.16 + ((Number(stock.mom20) || 0) / 100) * 0.012;
+    const open = roundOne(index === 0 ? close * (1 - bodyBias) : previousClose * (1 + bodyBias * 0.28));
+    const rangeLift = 1 + intradayRange * (0.7 + Math.abs(Math.sin(index * 0.61)));
+    const high = roundOne(Math.max(open, close) * rangeLift);
+    const low = roundOne(Math.min(open, close) / rangeLift);
+    const volume = Math.round(1000 * (Number(stock.volume) || 1) * (0.8 + Math.abs(close - open) / Math.max(close, 1) * 9 + index / points * 0.22));
+    series.push({ open, high, low, close, volume });
+  }
+
+  return series;
+}
+
+function ema(values, windowSize) {
+  const multiplier = 2 / (windowSize + 1);
+  const result = [];
+  values.forEach((value, index) => {
+    result.push(index === 0 ? value : value * multiplier + result[index - 1] * (1 - multiplier));
+  });
+  return result;
+}
+
+function calculateRsi(closes, windowSize = 14) {
+  const result = Array(closes.length).fill(50);
+  let averageGain = 0;
+  let averageLoss = 0;
+
+  for (let index = 1; index < closes.length; index += 1) {
+    const change = closes[index] - closes[index - 1];
+    const gain = Math.max(change, 0);
+    const loss = Math.max(-change, 0);
+
+    if (index <= windowSize) {
+      averageGain += gain;
+      averageLoss += loss;
+      if (index === windowSize) {
+        averageGain /= windowSize;
+        averageLoss /= windowSize;
+      }
+    } else {
+      averageGain = (averageGain * (windowSize - 1) + gain) / windowSize;
+      averageLoss = (averageLoss * (windowSize - 1) + loss) / windowSize;
+    }
+
+    if (index >= windowSize) {
+      result[index] = averageLoss === 0 ? 100 : 100 - 100 / (1 + averageGain / averageLoss);
+    }
+  }
+
+  return result.map((value) => clamp(value, 0, 100));
+}
+
+function calculateKd(series, windowSize = 9) {
+  const k = [];
+  const d = [];
+
+  series.forEach((item, index) => {
+    const from = Math.max(0, index - windowSize + 1);
+    const slice = series.slice(from, index + 1);
+    const high = Math.max(...slice.map((point) => point.high));
+    const low = Math.min(...slice.map((point) => point.low));
+    const rsv = high === low ? 50 : ((item.close - low) / (high - low)) * 100;
+    k[index] = index === 0 ? 50 : k[index - 1] * 2 / 3 + rsv / 3;
+    d[index] = index === 0 ? 50 : d[index - 1] * 2 / 3 + k[index] / 3;
+  });
+
+  return { k, d };
+}
+
+function calculateMacd(closes) {
+  const ema12 = ema(closes, 12);
+  const ema26 = ema(closes, 26);
+  const dif = closes.map((_, index) => ema12[index] - ema26[index]);
+  const signal = ema(dif, 9);
+  const histogram = dif.map((value, index) => value - signal[index]);
+  return { dif, signal, histogram };
+}
+
+function technicalIndicators(stock) {
+  const series = generateChartSeries(stock);
+  const closes = series.map((item) => item.close);
+  const ma5 = movingAverage(series, 5);
+  const ma10 = movingAverage(series, 10);
+  const ma20 = movingAverage(series, 20);
+  const ma60 = movingAverage(series, 60);
+  const rsi = calculateRsi(closes);
+  const kd = calculateKd(series);
+  const macd = calculateMacd(closes);
+  const last = series.length - 1;
+  const maValues = {
+    ma5: roundOne(ma5[last]),
+    ma10: roundOne(ma10[last]),
+    ma20: roundOne(ma20[last]),
+    ma60: roundOne(ma60[last])
+  };
+
+  return {
+    series,
+    ma5Line: ma5,
+    ma10Line: ma10,
+    ma20Line: ma20,
+    ma60Line: ma60,
+    rsi,
+    kd,
+    macd,
+    ...maValues,
+    rsiLast: Math.round(rsi[last]),
+    kLast: Math.round(kd.k[last]),
+    dLast: Math.round(kd.d[last]),
+    difLast: roundOne(macd.dif[last]),
+    signalLast: roundOne(macd.signal[last]),
+    histogramLast: roundOne(macd.histogram[last]),
+    maBullish: maValues.ma5 >= maValues.ma10 && maValues.ma10 >= maValues.ma20 && maValues.ma20 >= maValues.ma60
+  };
+}
+
+function renderTechSvg(stock) {
+  const tech = technicalIndicators(stock);
+  const visiblePoints = 60;
+  const series = tech.series.slice(-visiblePoints);
+  const offset = tech.series.length - series.length;
+  const width = 900;
+  const candleHeight = 270;
+  const rsiHeight = 120;
+  const macdHeight = 125;
+  const gap = 26;
+  const pad = { left: 44, right: 28, top: 20, bottom: 22 };
+  const chartWidth = width - pad.left - pad.right;
+  const totalHeight = candleHeight + rsiHeight + macdHeight + gap * 2;
+  const visibleMa = [tech.ma5Line, tech.ma10Line, tech.ma20Line, tech.ma60Line].map((line) => line.slice(offset));
+  const prices = series.flatMap((item, index) => [item.high, item.low, ...visibleMa.map((line) => line[index])]);
+  const minPrice = Math.min(...prices) * 0.985;
+  const maxPrice = Math.max(...prices) * 1.015;
+  const mapX = (index) => pad.left + (index / (series.length - 1)) * chartWidth;
+  const mapPrice = (price) => pad.top + ((maxPrice - price) / (maxPrice - minPrice)) * (candleHeight - pad.top - pad.bottom);
+  const candleWidth = Math.max(6, chartWidth / series.length * 0.64);
+  const rsiBaseY = candleHeight + gap;
+  const macdBaseY = candleHeight + gap + rsiHeight + gap;
+  const rsiPoints = tech.rsi.slice(offset);
+  const kPoints = tech.kd.k.slice(offset);
+  const dPoints = tech.kd.d.slice(offset);
+  const mapOsc = (value) => rsiBaseY + 12 + ((100 - value) / 100) * (rsiHeight - 24);
+  const macdLine = tech.macd.dif.slice(offset);
+  const signalLine = tech.macd.signal.slice(offset);
+  const histogramLine = tech.macd.histogram.slice(offset);
+  const macdMax = Math.max(0.01, ...macdLine.map(Math.abs), ...signalLine.map(Math.abs), ...histogramLine.map(Math.abs));
+  const mapMacd = (value) => macdBaseY + macdHeight / 2 - (value / macdMax) * (macdHeight * 0.38);
+  const gridLines = [0.2, 0.4, 0.6, 0.8]
+    .map((ratio) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${(candleHeight * ratio).toFixed(1)}" y2="${(candleHeight * ratio).toFixed(1)}" class="chart-grid" />`)
+    .join("");
+
+  const candles = series
+    .map((item, index) => {
+      const x = mapX(index);
+      const up = item.close >= item.open;
+      const colorClass = up ? "up" : "down";
+      const y = Math.min(mapPrice(item.open), mapPrice(item.close));
+      const height = Math.max(4, Math.abs(mapPrice(item.open) - mapPrice(item.close)));
+      return `
+        <line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${mapPrice(item.high).toFixed(1)}" y2="${mapPrice(item.low).toFixed(1)}" class="candle-wick ${colorClass}" />
+        <rect x="${(x - candleWidth / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${candleWidth.toFixed(1)}" height="${height.toFixed(1)}" rx="1.5" class="candle-body ${colorClass}" />
+      `;
+    })
+    .join("");
+
+  const histogram = histogramLine
+    .map((value, index) => {
+      const x = mapX(index);
+      const zero = mapMacd(0);
+      const y = mapMacd(value);
+      return `<rect x="${(x - 4).toFixed(1)}" y="${Math.min(y, zero).toFixed(1)}" width="8" height="${Math.max(1, Math.abs(zero - y)).toFixed(1)}" class="macd-bar ${value >= 0 ? "up" : "down"}" />`;
+    })
+    .join("");
+
+  return `
+    <svg class="tech-svg" viewBox="0 0 ${width} ${totalHeight}" role="img" aria-label="${stock.name} technical chart">
+      <rect width="${width}" height="${totalHeight}" class="chart-bg" />
+      ${gridLines}
+      ${candles}
+      <polyline points="${polyline(visibleMa[0], mapX, mapPrice)}" class="ma-line ma5" />
+      <polyline points="${polyline(visibleMa[1], mapX, mapPrice)}" class="ma-line ma10" />
+      <polyline points="${polyline(visibleMa[2], mapX, mapPrice)}" class="ma-line ma20" />
+      <polyline points="${polyline(visibleMa[3], mapX, mapPrice)}" class="ma-line ma60" />
+      <text x="${pad.left}" y="${candleHeight - 6}" class="chart-label">MA5 ${tech.ma5} / MA10 ${tech.ma10} / MA20 ${tech.ma20} / MA60 ${tech.ma60}</text>
+      <text x="${width - 86}" y="${mapPrice(stock.price) - 8}" class="price-label">${stock.price}</text>
+      <line x1="${pad.left}" x2="${width - pad.right}" y1="${rsiBaseY + rsiHeight - 14}" y2="${rsiBaseY + rsiHeight - 14}" class="chart-grid" />
+      <polyline points="${polyline(rsiPoints, mapX, mapOsc)}" class="osc-line rsi" />
+      <polyline points="${polyline(kPoints, mapX, mapOsc)}" class="osc-line kd" />
+      <polyline points="${polyline(dPoints, mapX, mapOsc)}" class="osc-line signal" />
+      <text x="${pad.left}" y="${rsiBaseY + 18}" class="chart-label">KD / RSI / K ${tech.kLast} / D ${tech.dLast} / RSI ${tech.rsiLast}</text>
+      <line x1="${pad.left}" x2="${width - pad.right}" y1="${mapMacd(0).toFixed(1)}" y2="${mapMacd(0).toFixed(1)}" class="chart-grid" />
+      ${histogram}
+      <polyline points="${polyline(macdLine, mapX, mapMacd)}" class="osc-line macd" />
+      <polyline points="${polyline(signalLine, mapX, mapMacd)}" class="osc-line signal" />
+      <text x="${pad.left}" y="${macdBaseY + 18}" class="chart-label">MACD / DIF ${tech.difLast} / Signal ${tech.signalLast} / Hist ${tech.histogramLast}</text>
+    </svg>
+  `;
+}
+
+function marketLabel(stock) {
+  return stock.market === "tpex" ? "上櫃" : "上市";
+}
+
+function renderTechSvg(stock) {
+  const tech = technicalIndicators(stock);
+  const visiblePoints = 140;
+  const series = tech.series.slice(-visiblePoints);
+  const offset = tech.series.length - series.length;
+  const width = 900;
+  const priceHeight = 320;
+  const indicatorHeight = 150;
+  const pad = { left: 48, right: 34, top: 28, bottom: 34 };
+  const chartWidth = width - pad.left - pad.right;
+  const visibleMa = [tech.ma5Line, tech.ma10Line, tech.ma20Line, tech.ma60Line].map((line) => line.slice(offset));
+  const prices = series.flatMap((item, index) => [item.high, item.low, ...visibleMa.map((line) => line[index])]);
+  const minPrice = Math.min(...prices) * 0.985;
+  const maxPrice = Math.max(...prices) * 1.015;
+  const mapX = (index) => pad.left + (index / Math.max(series.length - 1, 1)) * chartWidth;
+  const mapPrice = (price) => pad.top + ((maxPrice - price) / Math.max(maxPrice - minPrice, 0.01)) * (priceHeight - pad.top - pad.bottom);
+  const candleWidth = Math.max(4, chartWidth / Math.max(series.length, 1) * 0.62);
+  const priceGrid = [0.2, 0.4, 0.6, 0.8]
+    .map((ratio) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${(priceHeight * ratio).toFixed(1)}" y2="${(priceHeight * ratio).toFixed(1)}" class="chart-grid" />`)
+    .join("");
+  const candles = series
+    .map((item, index) => {
+      const x = mapX(index);
+      const up = item.close >= item.open;
+      const colorClass = up ? "up" : "down";
+      const y = Math.min(mapPrice(item.open), mapPrice(item.close));
+      const height = Math.max(3, Math.abs(mapPrice(item.open) - mapPrice(item.close)));
+      return `
+        <line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${mapPrice(item.high).toFixed(1)}" y2="${mapPrice(item.low).toFixed(1)}" class="candle-wick ${colorClass}" />
+        <rect x="${(x - candleWidth / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${candleWidth.toFixed(1)}" height="${height.toFixed(1)}" rx="1.2" class="candle-body ${colorClass}" />
+      `;
+    })
+    .join("");
+  const dateLabel = `${series[0]?.date || ""} - ${series.at(-1)?.date || ""}`;
+
+  const renderOscPanel = (title, subtitle, lines, minValue, maxValue, extra = "") => {
+    const mapY = (value) => pad.top + ((maxValue - value) / Math.max(maxValue - minValue, 0.01)) * (indicatorHeight - pad.top - pad.bottom);
+    const grid = [0.25, 0.5, 0.75]
+      .map((ratio) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${(indicatorHeight * ratio).toFixed(1)}" y2="${(indicatorHeight * ratio).toFixed(1)}" class="chart-grid" />`)
+      .join("");
+    return `
+      <section class="indicator-panel">
+        <div class="indicator-panel-head">
+          <strong>${title}</strong>
+          <span>${subtitle}</span>
+        </div>
+        <svg class="indicator-svg" viewBox="0 0 ${width} ${indicatorHeight}" role="img" aria-label="${title}">
+          <rect width="${width}" height="${indicatorHeight}" class="chart-bg" />
+          ${grid}
+          ${extra}
+          ${lines.map((line) => `<polyline points="${polyline(line.values, mapX, mapY)}" class="${line.className}" />`).join("")}
+        </svg>
+      </section>
+    `;
+  };
+
+  const rsiPoints = tech.rsi.slice(offset);
+  const kPoints = tech.kd.k.slice(offset);
+  const dPoints = tech.kd.d.slice(offset);
+  const macdLine = tech.macd.dif.slice(offset);
+  const signalLine = tech.macd.signal.slice(offset);
+  const histogramLine = tech.macd.histogram.slice(offset);
+  const macdAbs = Math.max(0.01, ...macdLine.map(Math.abs), ...signalLine.map(Math.abs), ...histogramLine.map(Math.abs));
+  const mapMacdY = (value) => pad.top + ((macdAbs - value) / (macdAbs * 2)) * (indicatorHeight - pad.top - pad.bottom);
+  const macdZeroY = mapMacdY(0);
+  const macdBars = histogramLine
+    .map((value, index) => {
+      const x = mapX(index);
+      const y = mapMacdY(value);
+      return `<rect x="${(x - 4).toFixed(1)}" y="${Math.min(y, macdZeroY).toFixed(1)}" width="8" height="${Math.max(1, Math.abs(macdZeroY - y)).toFixed(1)}" class="macd-bar ${value >= 0 ? "up" : "down"}" />`;
+    })
+    .join("");
+
+  return `
+    <div class="tech-chart-stack">
+      <section class="price-chart-panel">
+        <div class="indicator-panel-head">
+          <strong>日 K 線</strong>
+          <span>${dateLabel} / ${marketLabel(stock)}</span>
+        </div>
+        <svg class="tech-svg price-svg" viewBox="0 0 ${width} ${priceHeight}" role="img" aria-label="${stock.name} 日 K 線">
+          <rect width="${width}" height="${priceHeight}" class="chart-bg" />
+          ${priceGrid}
+          ${candles}
+          <polyline points="${polyline(visibleMa[0], mapX, mapPrice)}" class="ma-line ma5" />
+          <polyline points="${polyline(visibleMa[1], mapX, mapPrice)}" class="ma-line ma10" />
+          <polyline points="${polyline(visibleMa[2], mapX, mapPrice)}" class="ma-line ma20" />
+          <polyline points="${polyline(visibleMa[3], mapX, mapPrice)}" class="ma-line ma60" />
+          <text x="${pad.left}" y="${priceHeight - 10}" class="chart-label">MA5 ${tech.ma5} / MA10 ${tech.ma10} / MA20 ${tech.ma20} / MA60 ${tech.ma60}</text>
+          <text x="${width - 96}" y="${mapPrice(stock.price) - 8}" class="price-label">${stock.price}</text>
+        </svg>
+      </section>
+      ${renderOscPanel("KD", `K ${tech.kLast} / D ${tech.dLast}`, [
+        { values: kPoints, className: "osc-line kd" },
+        { values: dPoints, className: "osc-line signal" }
+      ], 0, 100)}
+      ${renderOscPanel("RSI", `RSI ${tech.rsiLast}`, [
+        { values: rsiPoints, className: "osc-line rsi" }
+      ], 0, 100)}
+      ${renderOscPanel("MACD", `DIF ${tech.difLast} / Signal ${tech.signalLast} / Hist ${tech.histogramLast}`, [
+        { values: macdLine, className: "osc-line macd" },
+        { values: signalLine, className: "osc-line signal" }
+      ], -macdAbs, macdAbs, `<line x1="${pad.left}" x2="${width - pad.right}" y1="${macdZeroY.toFixed(1)}" y2="${macdZeroY.toFixed(1)}" class="chart-grid" />${macdBars}`)}
+    </div>
+  `;
 }
 
 function scoreStock(stock) {
@@ -457,8 +936,10 @@ function getSectors() {
       const avgScore = members.reduce((sum, stock) => sum + stock.score, 0) / members.length;
       const avgMomentum = members.reduce((sum, stock) => sum + stock.mom20, 0) / members.length;
       const flow = members.reduce((sum, stock) => sum + stock.flow5, 0);
+      const twseCount = members.filter((stock) => stock.market !== "tpex").length;
+      const tpexCount = members.filter((stock) => stock.market === "tpex").length;
       const sectorScore = Math.round(avgScore * 0.55 + clamp(avgMomentum * 3, -25, 40) + clamp(flow / 350, -15, 25));
-      return { sector, members, avgScore, avgMomentum, flow, sectorScore };
+      return { sector, members, avgScore, avgMomentum, flow, sectorScore, twseCount, tpexCount };
     })
     .sort((a, b) => b.sectorScore - a.sectorScore);
 }
@@ -478,7 +959,7 @@ function renderTable(list) {
   els.table.innerHTML = list
     .map(
       (stock, index) => `
-        <tr>
+        <tr class="stock-row" data-stock-code="${stock.code}">
           <td><span class="rank-number">${index + 1}</span></td>
           <td>
             <div class="stock-cell">
@@ -497,6 +978,13 @@ function renderTable(list) {
       `
     )
     .join("");
+
+  els.table.querySelectorAll("[data-stock-code]").forEach((row) => {
+    const stock = list.find((item) => item.code === row.dataset.stockCode);
+    const meta = row.querySelector(".stock-cell span");
+    if (!stock || !meta || meta.querySelector(".market-badge")) return;
+    meta.insertAdjacentHTML("afterbegin", `<b class="market-badge ${stock.market === "tpex" ? "tpex" : "twse"}">${marketLabel(stock)}</b> `);
+  });
 }
 
 function renderTopPick(list) {
@@ -520,7 +1008,7 @@ function renderTopPick(list) {
   els.topPick.innerHTML = picks
     .map(
       (stock, index) => `
-        <article class="pick-card">
+        <article class="pick-card stock-clickable" data-stock-code="${stock.code}">
           <div class="pick-card-head">
             <span class="pick-rank">Top ${index + 1}</span>
             <span class="score-badge">${stock.aiPickScore}</span>
@@ -544,6 +1032,7 @@ function renderTopPick(list) {
       `
     )
     .join("");
+
 }
 
 function renderMetrics(list, sectors) {
@@ -573,20 +1062,63 @@ function renderSectors(sectors) {
   els.sectorList.innerHTML = sectors
     .slice(0, 6)
     .map(
-      (sector) => `
-        <article class="sector-card">
-          <strong>
-            <span>${sector.sector}</span>
-            <span>${sector.sectorScore}</span>
-          </strong>
+      (sector, index) => {
+        const members = [...sector.members]
+          .map((stock) => ({ ...stock, todayChange: periodMomentum(stock, 1) }))
+          .sort((a, b) => b.todayChange - a.todayChange);
+
+        return `
+        <details class="sector-card" ${index === 0 ? "open" : ""}>
+          <summary>
+            <strong>
+              <span>${sector.sector}</span>
+              <span>${sector.sectorScore}</span>
+            </strong>
+            <p>法人 ${sector.flow >= 0 ? "買超" : "賣超"} ${formatNumber(Math.abs(sector.flow))} 張 · 平均動量 ${formatPercent(sector.avgMomentum)} · ${sector.members.length} 檔</p>
+          </summary>
           <div class="bar">
             <span style="width:${clamp(sector.sectorScore, 8, 100)}%"></span>
           </div>
-          <p>法人 ${sector.flow >= 0 ? "買超" : "賣超"} ${formatNumber(Math.abs(sector.flow))} 張 · 平均動量 ${formatPercent(sector.avgMomentum)} · ${sector.members.length} 檔</p>
-        </article>
-      `
+          <div class="sector-market-counts">
+            <span class="market-badge twse">上市 ${sector.twseCount}</span>
+            <span class="market-badge tpex">上櫃 ${sector.tpexCount}</span>
+          </div>
+          <div class="sector-members">
+            ${members
+              .map(
+                (stock) => `
+                  <div class="sector-member stock-clickable" data-stock-code="${stock.code}">
+                    <div>
+                      <strong>${stock.name}</strong>
+                      <span>${stock.code} · ${stock.price} 元</span>
+                    </div>
+                    <b class="${stock.todayChange >= 0 ? "positive" : "negative"}">${formatPercent(stock.todayChange)}</b>
+                  </div>
+                `
+              )
+              .join("")}
+          </div>
+        </details>
+      `;
+      }
     )
     .join("");
+
+  const sectorStocks = sectors.flatMap((sector) => sector.members);
+  els.sectorList.querySelectorAll("[data-stock-code]").forEach((item) => {
+    const stock = sectorStocks.find((entry) => entry.code === item.dataset.stockCode);
+    const meta = item.querySelector("span");
+    if (!stock || !meta || meta.querySelector(".market-badge")) return;
+    meta.insertAdjacentHTML("afterbegin", `<b class="market-badge ${stock.market === "tpex" ? "tpex" : "twse"}">${marketLabel(stock)}</b> `);
+  });
+
+  els.sectorList.querySelectorAll(".sector-card").forEach((card, index) => {
+    const sector = sectors[index];
+    if (!sector) return;
+    const counts = card.querySelectorAll(".sector-market-counts .market-badge");
+    if (counts[0]) counts[0].textContent = `TWSE ${sector.twseCount}`;
+    if (counts[1]) counts[1].textContent = `TPEx ${sector.tpexCount}`;
+  });
 }
 
 function setActiveMetric(metricKey) {
@@ -656,6 +1188,82 @@ function findStockByCode(code) {
   const normalized = code.trim();
   if (!normalized) return null;
   return stocks.map(enrich).find((stock) => stock.code === normalized);
+}
+
+function closeStockModal() {
+  if (!els.stockModal) return;
+  els.stockModal.classList.add("is-hidden");
+  document.body.classList.remove("modal-open");
+}
+
+function openStockModal(code) {
+  if (!els.stockModal || !els.stockModalContent) return;
+  const stock = findStockByCode(code);
+  if (!stock) return;
+
+  const tech = technicalIndicators(stock);
+  stock.macdValue = `DIF ${tech.difLast} / Signal ${tech.signalLast} / Hist ${tech.histogramLast}`;
+  stock.macdSignal = `DIF ${tech.difLast} / Signal ${tech.signalLast}`;
+  const rsi = tech.rsiLast;
+  const force = mainForceFlow(stock);
+  const plan = tradePlan(stock);
+  const todayChange = Number.isFinite(stock.mom1) ? stock.mom1 : periodMomentum(stock, 1);
+  const kdValue = tech.kLast;
+  const maSignal = tech.maBullish ? "bullish" : tech.ma5 < tech.ma20 && stock.mom20 < 0 ? "bearish" : "neutral";
+  const macdSignal = tech.histogramLast >= 0 && tech.difLast >= tech.signalLast ? "bullish" : tech.histogramLast < 0 ? "bearish" : "neutral";
+  const chipSignal = stock.flow5 >= 0 && force >= 0 ? "bullish" : stock.flow5 < 0 && force < 0 ? "bearish" : "neutral";
+  const totalScore = analysisScore(stock);
+
+  els.stockModalContent.innerHTML = `
+    <header class="modal-stock-head">
+      <div>
+        <p class="eyebrow">Technical View</p>
+        <h3 id="stockModalTitle">${stock.code} ${stock.name}</h3>
+        <p>${marketLabel(stock)} · ${stock.sector} · 量化分數 ${totalScore} · ${plan.action}</p>
+      </div>
+      <div class="modal-price">
+        <strong>${stock.price}</strong>
+        <span class="${todayChange >= 0 ? "positive" : "negative"}">${formatPercent(todayChange)}</span>
+      </div>
+    </header>
+
+    <div class="modal-stat-strip">
+      <span>動能 <strong>${momentumPower(stock)}</strong></span>
+      <span>KD <strong>${kdValue}</strong></span>
+      <span>RSI <strong>${rsi}</strong></span>
+      <span>法人5日 <strong class="${stock.flow5 >= 0 ? "positive" : "negative"}">${stock.flow5 >= 0 ? "+" : ""}${formatNumber(stock.flow5)}</strong></span>
+    </div>
+
+    <div class="modal-chart-wrap">
+      ${renderTechSvg(stock)}
+    </div>
+
+    <div class="modal-signal-grid">
+      <article class="signal-card ${maSignal}">
+        <span>均線排列</span>
+        <strong>${stock.trendText}</strong>
+        <p>MA5 ${tech.ma5} / MA10 ${tech.ma10} / MA20 ${tech.ma20} / MA60 ${tech.ma60}</p>
+      </article>
+      <article class="signal-card ${macdSignal}">
+        <span>MACD / RSI</span>
+        <strong>${stock.macdSignal} · RSI ${rsi}</strong>
+        <p>MACD ${stock.macdValue}，搭配 20 日漲幅 ${formatPercent(stock.mom20)}。</p>
+      </article>
+      <article class="signal-card ${chipSignal}">
+        <span>籌碼</span>
+        <strong class="${force >= 0 ? "positive" : "negative"}">${force >= 0 ? "+" : ""}${formatNumber(force)} 張</strong>
+        <p>外資 ${stock.foreign >= 0 ? "+" : ""}${formatNumber(stock.foreign)}、投信 ${stock.trust >= 0 ? "+" : ""}${formatNumber(stock.trust)}、自營商 ${stock.dealer >= 0 ? "+" : ""}${formatNumber(stock.dealer)}。</p>
+      </article>
+      <article class="signal-card neutral">
+        <span>買賣參考</span>
+        <strong>${plan.buyLow} - ${plan.buyHigh}</strong>
+        <p>小停損 ${plan.smallStopLoss}，大停損 ${plan.bigStopLoss}。</p>
+      </article>
+    </div>
+  `;
+
+  els.stockModal.classList.remove("is-hidden");
+  document.body.classList.add("modal-open");
 }
 
 function renderStockAnalysis(code = "") {
@@ -1067,6 +1675,21 @@ if (els.stockAnalysisForm) {
     renderStockAnalysis(els.analysisCodeInput.value);
   });
 }
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-close-stock-modal]")) {
+    closeStockModal();
+    return;
+  }
+
+  const stockTarget = event.target.closest("[data-stock-code]");
+  if (!stockTarget || event.target.closest("button, a, input, select, textarea")) return;
+  openStockModal(stockTarget.dataset.stockCode);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeStockModal();
+});
 
 if (els.sectorFilter) {
   els.sectorFilter.addEventListener("change", (event) => {
