@@ -540,7 +540,7 @@ async function main() {
   };
 
   await fs.mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
-  await fs.writeFile(OUTPUT_FILE, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await fs.writeFile(OUTPUT_FILE, `${JSON.stringify(payload)}\n`, "utf8");
 
   console.log(`Data date: ${latestKey}`);
   console.log(`Trading days loaded: ${tradingDays.length}`);

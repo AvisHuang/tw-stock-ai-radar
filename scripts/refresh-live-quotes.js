@@ -115,7 +115,7 @@ async function main() {
   payload.updatedAt = new Date().toISOString();
   payload.liveQuoteCount = updated;
   payload.source = "TWSE + TPEx official APIs + TWSE MIS live quotes";
-  await fs.writeFile(DATA_FILE, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await fs.writeFile(DATA_FILE, `${JSON.stringify(payload)}\n`, "utf8");
   console.log(`Live quotes updated: ${updated}`);
   console.log(`Data date: ${payload.dataDate}`);
 }

@@ -50,7 +50,7 @@ async function main() {
 
   payload.updatedAt = new Date().toISOString();
   payload.note = `${payload.note || ""} Data fixes: removed isolated bad OHLC bars and applied thematic sector labels.`;
-  await fs.writeFile(DATA_FILE, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await fs.writeFile(DATA_FILE, `${JSON.stringify(payload)}\n`, "utf8");
   console.log(`Relabeled stocks: ${relabeled}`);
   console.log(`Removed bad bars: ${removedBars}`);
 }
