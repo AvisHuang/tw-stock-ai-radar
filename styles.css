@@ -1519,9 +1519,35 @@ body.modal-open {
 
 .modal-chart-wrap {
   overflow: hidden;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #111314;
+}
+
+.tv-chart-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.tv-pane {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: #111314;
+}
+
+.tv-pane-canvas {
+  width: 100%;
+  min-height: 140px;
+}
+
+.tv-price-pane .tv-pane-canvas {
+  min-height: 390px;
+}
+
+.tv-chart-fallback.is-hidden {
+  display: none;
 }
 
 .tech-svg {
@@ -1603,19 +1629,23 @@ body.modal-open {
 }
 
 .ma5 {
-  stroke: #ffd85d;
+  stroke: #ff4d6d;
 }
 
 .ma10 {
-  stroke: #f253d8;
+  stroke: #d64cff;
 }
 
 .ma20 {
-  stroke: #8b76ff;
+  stroke: #ff9f1a;
 }
 
 .ma60 {
-  stroke: #83b8ff;
+  stroke: #00d084;
+}
+
+.ma240 {
+  stroke: #2f7cff;
 }
 
 .osc-line.rsi,
@@ -1626,6 +1656,10 @@ body.modal-open {
 .osc-line.kd,
 .osc-line.signal {
   stroke: #f5c54c;
+}
+
+.osc-line.j {
+  stroke: #00a5e5;
 }
 
 .macd-bar.up {
