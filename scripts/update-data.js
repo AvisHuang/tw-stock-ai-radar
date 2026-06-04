@@ -1,47 +1,394 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const stocks = [
-  { code: "2330", name: "台積電", sector: "半導體", price: 984, flow5: 8420, foreign: 6200, trust: 980, dealer: 1240, mom20: 9.6, mom60: 18.2, volume: 1.42, volatility: 18, pe: 24 },
-  { code: "2317", name: "鴻海", sector: "電子代工", price: 181, flow5: 4120, foreign: 3300, trust: 520, dealer: 300, mom20: 6.8, mom60: 11.4, volume: 1.28, volatility: 22, pe: 15 },
-  { code: "2454", name: "聯發科", sector: "IC 設計", price: 1315, flow5: 1880, foreign: 900, trust: 650, dealer: 330, mom20: 8.2, mom60: 14.8, volume: 1.11, volatility: 25, pe: 21 },
-  { code: "2382", name: "廣達", sector: "AI 伺服器", price: 286, flow5: 5340, foreign: 4100, trust: 780, dealer: 460, mom20: 11.4, mom60: 22.5, volume: 1.63, volatility: 28, pe: 19 },
-  { code: "3231", name: "緯創", sector: "AI 伺服器", price: 122, flow5: 3620, foreign: 2600, trust: 430, dealer: 590, mom20: 12.1, mom60: 25.3, volume: 1.82, volatility: 34, pe: 18 },
-  { code: "2308", name: "台達電", sector: "電源管理", price: 372, flow5: 2190, foreign: 1400, trust: 610, dealer: 180, mom20: 5.4, mom60: 9.2, volume: 1.08, volatility: 17, pe: 27 },
-  { code: "2881", name: "富邦金", sector: "金融", price: 83.6, flow5: 1550, foreign: 1100, trust: 290, dealer: 160, mom20: 3.1, mom60: 7.6, volume: 0.96, volatility: 12, pe: 13 },
-  { code: "2603", name: "長榮", sector: "航運", price: 183, flow5: -1480, foreign: -2100, trust: 360, dealer: 260, mom20: -2.8, mom60: 6.1, volume: 1.36, volatility: 31, pe: 8 },
-  { code: "6505", name: "台塑化", sector: "塑化", price: 66.2, flow5: -920, foreign: -800, trust: -180, dealer: 60, mom20: -4.1, mom60: -8.7, volume: 0.88, volatility: 15, pe: 31 },
-  { code: "3661", name: "世芯-KY", sector: "IC 設計", price: 3180, flow5: 760, foreign: 420, trust: 210, dealer: 130, mom20: 14.7, mom60: 31.8, volume: 1.74, volatility: 41, pe: 36 },
-  { code: "3017", name: "奇鋐", sector: "散熱", price: 648, flow5: 2840, foreign: 2050, trust: 550, dealer: 240, mom20: 13.3, mom60: 29.1, volume: 1.69, volatility: 32, pe: 25 },
-  { code: "8046", name: "南電", sector: "載板", price: 172, flow5: -360, foreign: -620, trust: 120, dealer: 140, mom20: 1.4, mom60: 4.2, volume: 1.03, volatility: 29, pe: 22 },
-  { code: "2379", name: "瑞昱", sector: "IC 設計", price: 515, flow5: 1320, foreign: 780, trust: 410, dealer: 130, mom20: 7.1, mom60: 15.3, volume: 1.22, volatility: 27, pe: 20 },
-  { code: "2357", name: "華碩", sector: "品牌電腦", price: 612, flow5: 980, foreign: 560, trust: 330, dealer: 90, mom20: 4.8, mom60: 12.2, volume: 1.05, volatility: 20, pe: 16 },
-  { code: "3034", name: "聯詠", sector: "IC 設計", price: 548, flow5: -1180, foreign: -1430, trust: 180, dealer: 70, mom20: -1.2, mom60: 2.5, volume: 0.92, volatility: 24, pe: 14 },
-  { code: "5871", name: "中租-KY", sector: "金融", price: 148, flow5: -680, foreign: -760, trust: 40, dealer: 40, mom20: -3.6, mom60: -5.2, volume: 0.84, volatility: 16, pe: 11 },
-  { code: "2345", name: "智邦", sector: "網通", price: 745, flow5: 2460, foreign: 1700, trust: 520, dealer: 240, mom20: 10.8, mom60: 23.6, volume: 1.58, volatility: 30, pe: 26 },
-  { code: "6669", name: "緯穎", sector: "AI 伺服器", price: 2875, flow5: 1120, foreign: 620, trust: 360, dealer: 140, mom20: 15.2, mom60: 34.1, volume: 1.66, volatility: 38, pe: 31 },
-  { code: "3711", name: "日月光投控", sector: "半導體", price: 168, flow5: 2980, foreign: 2250, trust: 420, dealer: 310, mom20: 5.9, mom60: 13.5, volume: 1.18, volatility: 19, pe: 17 },
-  { code: "2327", name: "國巨", sector: "被動元件", price: 712, flow5: 820, foreign: 510, trust: 210, dealer: 100, mom20: 6.4, mom60: 10.8, volume: 1.14, volatility: 24, pe: 18 },
-  { code: "6415", name: "矽力-KY", sector: "IC 設計", price: 428, flow5: 640, foreign: 380, trust: 170, dealer: 90, mom20: 9.1, mom60: 16.6, volume: 1.31, volatility: 36, pe: 33 },
-  { code: "2002", name: "中鋼", sector: "鋼鐵", price: 24.8, flow5: -1860, foreign: -1420, trust: -260, dealer: -180, mom20: -1.8, mom60: -3.4, volume: 0.9, volatility: 13, pe: 28 },
-  { code: "1101", name: "台泥", sector: "水泥", price: 34.6, flow5: 420, foreign: 280, trust: 90, dealer: 50, mom20: 1.8, mom60: 3.9, volume: 0.98, volatility: 11, pe: 19 },
-  { code: "1519", name: "華城", sector: "重電", price: 721, flow5: 1760, foreign: 980, trust: 560, dealer: 220, mom20: 18.4, mom60: 38.2, volume: 1.93, volatility: 43, pe: 35 }
-];
+const OUTPUT_FILE = path.join(__dirname, "..", "outputs", "data", "latest.json");
+const LOOKBACK_CALENDAR_DAYS = 240;
+const MIN_COMMON_STOCKS = 300;
+
+const sectorOverrides = new Map([
+  ["2330", "半導體"],
+  ["2454", "IC 設計"],
+  ["2379", "IC 設計"],
+  ["3034", "IC 設計"],
+  ["3661", "IC 設計"],
+  ["6415", "IC 設計"],
+  ["2382", "AI 伺服器"],
+  ["3231", "AI 伺服器"],
+  ["6669", "AI 伺服器"],
+  ["2356", "AI 伺服器"],
+  ["3017", "散熱"],
+  ["3324", "散熱"],
+  ["1519", "重電"],
+  ["2308", "電子零組件"],
+  ["2327", "電子零組件"],
+  ["2345", "網通"],
+  ["2317", "電腦及週邊"],
+  ["2357", "電腦及週邊"]
+]);
+
+function toTaipeiDate(date = new Date()) {
+  return new Date(date.toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function twseDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
+function slashDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}/${month}/${day}`;
+}
+
+function isoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function numberValue(value) {
+  if (value === null || value === undefined) return 0;
+  const cleaned = String(value)
+    .replace(/,/g, "")
+    .replace(/X|--|---/g, "")
+    .replace(/[^\d.+-]/g, "")
+    .trim();
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function cleanName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function isCommonStock(code) {
+  return /^\d{4}$/.test(code) && !code.startsWith("00") && !code.startsWith("91");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchJson(url, retries = 2) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "accept": "application/json,text/plain,*/*",
+          "user-agent": "tw-stock-ai-radar/1.0"
+        }
+      });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}: ${url}`);
+      return response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) await sleep(450 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
+function tableByField(tables, fieldName) {
+  return (tables || []).find((table) => Array.isArray(table.fields) && table.fields.includes(fieldName));
+}
+
+async function fetchStockInfo() {
+  try {
+    const payload = await fetchJson("https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo");
+    const info = new Map();
+    for (const item of payload.data || []) {
+      if (!isCommonStock(item.stock_id)) continue;
+      info.set(item.stock_id, {
+        name: cleanName(item.stock_name),
+        sector: sectorOverrides.get(item.stock_id) || cleanName(item.industry_category) || "其他",
+        market: item.type === "tpex" ? "tpex" : "twse"
+      });
+    }
+    return info;
+  } catch (error) {
+    console.warn(`Stock info fallback: ${error.message}`);
+    return new Map();
+  }
+}
+
+async function fetchTwsePrices(date) {
+  const payload = await fetchJson(
+    `https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=${twseDate(date)}&type=ALLBUT0999`
+  );
+  const table = tableByField(payload.tables, "證券代號");
+  if (!table || payload.stat !== "OK") return [];
+
+  return table.data
+    .filter((row) => isCommonStock(row[0]))
+    .map((row) => ({
+      code: row[0],
+      name: cleanName(row[1]),
+      close: numberValue(row[8]),
+      open: numberValue(row[5]),
+      high: numberValue(row[6]),
+      low: numberValue(row[7]),
+      change: numberValue(row[10]),
+      shares: numberValue(row[2]),
+      amount: numberValue(row[4]),
+      pe: numberValue(row[15]),
+      market: "twse"
+    }))
+    .filter((stock) => stock.close > 0);
+}
+
+async function fetchTpexPrices(date) {
+  const payload = await fetchJson(
+    `https://www.tpex.org.tw/www/zh-tw/afterTrading/otc?date=${slashDate(date)}&type=EW&response=json`
+  );
+  const table = tableByField(payload.tables, "代號");
+  if (!table) return [];
+
+  return table.data
+    .filter((row) => isCommonStock(row[0]))
+    .map((row) => ({
+      code: row[0],
+      name: cleanName(row[1]),
+      close: numberValue(row[2]),
+      open: numberValue(row[4]),
+      high: numberValue(row[5]),
+      low: numberValue(row[6]),
+      change: numberValue(row[3]),
+      shares: numberValue(row[7]),
+      amount: numberValue(row[8]),
+      pe: 0,
+      market: "tpex"
+    }))
+    .filter((stock) => stock.close > 0);
+}
+
+async function fetchPrices(date) {
+  const [twse, tpex] = await Promise.allSettled([fetchTwsePrices(date), fetchTpexPrices(date)]);
+  return [
+    ...(twse.status === "fulfilled" ? twse.value : []),
+    ...(tpex.status === "fulfilled" ? tpex.value : [])
+  ];
+}
+
+async function fetchTwseInstitution(date) {
+  const payload = await fetchJson(
+    `https://www.twse.com.tw/rwd/zh/fund/T86?date=${twseDate(date)}&selectType=ALLBUT0999&response=json`
+  );
+  if (payload.stat !== "OK" || !Array.isArray(payload.data)) return [];
+  return payload.data
+    .filter((row) => isCommonStock(row[0]))
+    .map((row) => ({
+      code: row[0],
+      foreign: numberValue(row[4]) / 1000,
+      trust: numberValue(row[10]) / 1000,
+      dealer: numberValue(row[11]) / 1000,
+      total: numberValue(row[18]) / 1000
+    }));
+}
+
+async function fetchTpexInstitution(date) {
+  const payload = await fetchJson(
+    `https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade?date=${slashDate(date)}&type=Daily&response=json`
+  );
+  const table = tableByField(payload.tables, "代號");
+  if (!table) return [];
+  return table.data
+    .filter((row) => isCommonStock(row[0]))
+    .map((row) => ({
+      code: row[0],
+      foreign: numberValue(row[10]) / 1000,
+      trust: numberValue(row[13]) / 1000,
+      dealer: numberValue(row[22]) / 1000,
+      total: numberValue(row[23]) / 1000
+    }));
+}
+
+async function fetchInstitution(date) {
+  let lastRows = [];
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const [twse, tpex] = await Promise.allSettled([fetchTwseInstitution(date), fetchTpexInstitution(date)]);
+    const rows = [
+      ...(twse.status === "fulfilled" ? twse.value : []),
+      ...(tpex.status === "fulfilled" ? tpex.value : [])
+    ];
+    lastRows = rows;
+    if (rows.length >= 1400) return rows;
+    await sleep(650 * (attempt + 1));
+  }
+  return lastRows;
+}
+
+async function mapLimit(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: limit }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function findLatestTradingDate(today) {
+  for (let offset = 0; offset < 14; offset += 1) {
+    const date = addDays(today, -offset);
+    const prices = await fetchPrices(date);
+    if (prices.length >= MIN_COMMON_STOCKS) return { date, prices };
+  }
+  throw new Error("No recent TWSE/TPEx trading data found.");
+}
+
+function pctChange(current, previous) {
+  if (!previous || previous <= 0) return 0;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
+function sumFlow(flows, code, days, key = "total") {
+  const rows = flows.slice(-days);
+  const total = rows.reduce((sum, dayMap) => sum + (dayMap.get(code)?.[key] || 0), 0);
+  return Math.round(total);
+}
+
+function riskLabel(volatility, pe, mom20) {
+  if (volatility >= 9 || pe >= 45 || mom20 < -8) return "高風險";
+  if (volatility >= 5 || pe >= 30) return "中性";
+  return "低風險";
+}
+
+function buildStockRow(price, info, history, flows) {
+  const closes = history.map((item) => item.close);
+  const current = price.close;
+  const previous = closes.at(-2) || current - price.change;
+  const close20 = closes.length > 20 ? closes.at(-21) : closes[0];
+  const close60 = closes.length > 60 ? closes.at(-61) : closes[0];
+  const rangePct = price.low > 0 ? ((price.high - price.low) / price.close) * 100 : 0;
+  const mom20 = pctChange(current, close20);
+  const mom60 = pctChange(current, close60);
+  const todayPct = pctChange(current, previous);
+  const volumeBase = Math.max(1, price.amount / 100000000);
+  const volume = Math.round(Math.max(0.45, Math.min(3.2, volumeBase / 8 + Math.abs(todayPct) / 8 + 0.75)) * 100) / 100;
+
+  return {
+    code: price.code,
+    name: info?.name || price.name,
+    sector: info?.sector || sectorOverrides.get(price.code) || "其他",
+    price: Math.round(current * 100) / 100,
+    market: info?.market || price.market,
+    flow5: sumFlow(flows, price.code, 5),
+    flow20: sumFlow(flows, price.code, 20),
+    flow60: sumFlow(flows, price.code, 60),
+    foreign: sumFlow(flows, price.code, 5, "foreign"),
+    trust: sumFlow(flows, price.code, 5, "trust"),
+    dealer: sumFlow(flows, price.code, 5, "dealer"),
+    mom1: todayPct,
+    mom20,
+    mom60,
+    volume,
+    volatility: Math.round(Math.max(rangePct, Math.abs(todayPct)) * 10) / 10,
+    pe: price.pe || 0,
+    risk: riskLabel(Math.max(rangePct, Math.abs(todayPct)), price.pe || 0, mom20),
+    history
+  };
+}
 
 async function main() {
-  const outputDir = path.join(__dirname, "..", "outputs", "data");
-  const outputFile = path.join(outputDir, "latest.json");
+  const today = toTaipeiDate();
+  const info = await fetchStockInfo();
+  const latest = await findLatestTradingDate(today);
+  const latestKey = isoDate(latest.date);
+
+  const calendarDates = Array.from({ length: LOOKBACK_CALENDAR_DAYS }, (_, index) =>
+    addDays(latest.date, index - LOOKBACK_CALENDAR_DAYS + 1)
+  );
+
+  const priceSnapshots = await mapLimit(calendarDates, 4, async (date) => {
+    try {
+      const prices = await fetchPrices(date);
+      return prices.length >= MIN_COMMON_STOCKS ? { date, prices } : null;
+    } catch (error) {
+      return null;
+    }
+  });
+
+  const tradingDays = priceSnapshots.filter(Boolean).sort((a, b) => a.date - b.date);
+  const priceHistory = new Map();
+  for (const snapshot of tradingDays) {
+    for (const stock of snapshot.prices) {
+      if (!priceHistory.has(stock.code)) priceHistory.set(stock.code, []);
+      priceHistory.get(stock.code).push({
+        date: isoDate(snapshot.date),
+        open: Math.round(stock.open * 100) / 100,
+        high: Math.round(stock.high * 100) / 100,
+        low: Math.round(stock.low * 100) / 100,
+        close: Math.round(stock.close * 100) / 100,
+        volume: Math.round(stock.shares / 1000),
+        amount: Math.round(stock.amount),
+        market: stock.market
+      });
+    }
+  }
+
+  const institutionDays = tradingDays.slice(-60);
+  const rawFlowSnapshots = await mapLimit(institutionDays, 2, async (snapshot) => {
+    try {
+      const rows = await fetchInstitution(snapshot.date);
+      const map = new Map(rows.map((row) => [row.code, row]));
+      return map.size >= 1400 ? { date: snapshot.date, map } : null;
+    } catch (error) {
+      console.warn(`Institution data skipped ${isoDate(snapshot.date)}: ${error.message}`);
+      return null;
+    }
+  });
+  const flowSnapshots = rawFlowSnapshots.filter(Boolean).map((snapshot) => snapshot.map);
+
+  const latestPrices = new Map(latest.prices.map((stock) => [stock.code, stock]));
+  const stocks = [...latestPrices.values()]
+    .map((price) => {
+      const history = priceHistory.get(price.code) || [{
+        date: latestKey,
+        open: price.open,
+        high: price.high,
+        low: price.low,
+        close: price.close,
+        volume: Math.round(price.shares / 1000),
+        amount: Math.round(price.amount),
+        market: price.market
+      }];
+      return buildStockRow(price, info.get(price.code), history, flowSnapshots);
+    })
+    .filter((stock) => stock.name && stock.price > 0)
+    .sort((a, b) => Math.abs(b.flow5) - Math.abs(a.flow5));
+
   const payload = {
     updatedAt: new Date().toISOString(),
+    dataDate: latestKey,
     timezone: "Asia/Taipei",
-    source: "GitHub Actions 自動更新示範資料",
-    note: "下一階段可在此腳本串接 TWSE、TPEX、FinMind 或券商 API。",
+    source: "TWSE + TPEx official APIs",
+    note: "價格使用上市/上櫃官方收盤行情；法人使用三大法人日報；20/60 日漲幅以近交易日收盤價估算。",
     stocks
   };
 
-  await fs.mkdir(outputDir, { recursive: true });
-  await fs.writeFile(outputFile, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  console.log(`Wrote ${outputFile}`);
+  await fs.mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
+  await fs.writeFile(OUTPUT_FILE, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+
+  console.log(`Data date: ${latestKey}`);
+  console.log(`Trading days loaded: ${tradingDays.length}`);
+  console.log(`Stocks written: ${stocks.length}`);
+  console.log(`Wrote ${OUTPUT_FILE}`);
 }
 
 main().catch((error) => {

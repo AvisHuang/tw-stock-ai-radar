@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>台股 AI 多功能選股雷達</title>
-    <link rel="stylesheet" href="./styles.css?v=ma60-core-1" />
+    <link rel="stylesheet" href="./styles.css?v=market-coverage-2" />
   </head>
   <body>
     <main class="app-shell">
@@ -31,7 +31,7 @@
 
         <section class="data-note">
           <h2>資料說明</h2>
-          <p>目前是展示用資料。正式上線可串接 TWSE、TPEX、FinMind、券商 API 或自有資料庫。</p>
+          <p>盤後資料使用 TWSE + TPEx 官方 API，已納入上市與上櫃公司；個股彈窗可用近即時報價更新今日 K 線。</p>
           <p class="timestamp">更新時間：<span id="updatedAt">--</span></p>
         </section>
 
@@ -45,7 +45,7 @@
             <span>晚上 18:00</span>
             <strong>收盤法人</strong>
           </div>
-          <p>正式版會由後端排程更新，網頁自動讀取最新資料。</p>
+          <p>本機資料可由更新腳本重新抓取；盤中個股報價會在開啟彈窗後定時更新。</p>
         </section>
       </aside>
 
@@ -75,7 +75,7 @@
             <article>
               <span>今日法人總買賣超</span>
               <strong id="institutionTotal">--</strong>
-              <small>示範資料以近 5 日法人流向估算</small>
+              <small>使用近 5 日上市與上櫃法人流向統計</small>
             </article>
           </div>
           <div id="topPick" class="top-pick top-pick-grid"></div>
@@ -252,6 +252,10 @@
                 <span>建議</span>
                 <strong>策略</strong>
               </button>
+              <button class="screener-tab" data-condition-group="host" type="button">
+                <span>版主</span>
+                <strong>推薦</strong>
+              </button>
               <button class="screener-tab" data-condition-group="chip" type="button">
                 <span>籌碼</span>
                 <strong>法人</strong>
@@ -304,7 +308,7 @@
           </div>
         </section>
 
-        <section class="panel table-panel page-section" data-section="strong sectors institution momentum screener">
+        <section class="panel table-panel page-section" data-section="strong institution momentum screener">
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Ranking</p>
@@ -335,6 +339,14 @@
       </section>
     </main>
 
-    <script src="./app.js?v=ma60-core-1"></script>
+    <div id="stockModal" class="stock-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="stockModalTitle">
+      <div class="stock-modal-backdrop" data-close-stock-modal></div>
+      <section class="stock-modal-panel">
+        <button class="modal-close" data-close-stock-modal type="button" aria-label="關閉">×</button>
+        <div id="stockModalContent"></div>
+      </section>
+    </div>
+
+    <script src="./app.js?v=market-coverage-2"></script>
   </body>
 </html>
