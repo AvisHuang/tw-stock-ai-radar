@@ -26,6 +26,38 @@ const sectorOverrides = new Map([
   ["2357", "電腦及週邊"]
 ]);
 
+const officialSectorNames = new Map([
+  ["01", "水泥工業"], ["02", "食品工業"], ["03", "塑膠工業"], ["04", "紡織纖維"], ["05", "電機機械"],
+  ["06", "電器電纜"], ["08", "玻璃陶瓷"], ["09", "造紙工業"], ["10", "鋼鐵工業"], ["11", "橡膠工業"],
+  ["12", "汽車工業"], ["14", "建材營造業"], ["15", "航運業"], ["16", "觀光餐旅"], ["17", "金融保險業"],
+  ["18", "貿易百貨業"], ["22", "生技醫療業"], ["23", "油電燃氣業"], ["24", "半導體業"],
+  ["25", "電腦及週邊設備業"], ["26", "光電業"], ["27", "通信網路業"], ["28", "電子零組件業"],
+  ["29", "電子通路業"], ["30", "資訊服務業"], ["31", "其他電子業"], ["32", "文化創意業"],
+  ["33", "農業科技業"], ["35", "綠能環保"], ["36", "數位雲端"], ["37", "運動休閒"], ["38", "居家生活"]
+]);
+
+const sectorAliases = new Map([
+  ["建材營造", "建材營造業"], ["金融保險", "金融保險業"], ["金融業", "金融保險業"],
+  ["貿易百貨", "貿易百貨業"], ["生技醫療", "生技醫療業"], ["其他電子類", "其他電子業"],
+  ["其他電子", "其他電子業"], ["電子零組件", "電子零組件業"], ["電腦及週邊", "電腦及週邊設備業"],
+  ["數位雲端類", "數位雲端"], ["綠能環保類", "綠能環保"], ["運動休閒類", "運動休閒"],
+  ["居家生活類", "居家生活"], ["航運", "航運業"], ["鋼鐵", "鋼鐵工業"], ["網通", "通信網路業"],
+  ["光通訊", "通信網路業"], ["機器人", "電機機械"], ["電源與儲能", "電機機械"], ["IC 載板", "電子零組件業"],
+  ["IC 設計", "半導體業"], ["半導體", "半導體業"], ["AI 伺服器", "電腦及週邊設備業"],
+  ["散熱", "電子零組件業"], ["重電", "電機機械"], ["電源管理", "電子零組件業"], ["被動元件", "電子零組件業"],
+  ["載板", "電子零組件業"], ["電腦品牌", "電腦及週邊設備業"], ["電子代工", "其他電子業"]
+]);
+
+function normalizeSector(value) {
+  const cleaned = cleanName(value);
+  if (!cleaned) return "其他";
+  return sectorAliases.get(cleaned) || cleaned;
+}
+
+function sectorFor(code, fallback) {
+  return normalizeSector(sectorOverrides.get(code) || fallback || "其他");
+}
+
 function toTaipeiDate(date = new Date()) {
   return new Date(date.toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
 }
@@ -112,7 +144,7 @@ async function fetchStockInfo() {
       if (!isCommonStock(item.stock_id)) continue;
       info.set(item.stock_id, {
         name: cleanName(item.stock_name),
-        sector: sectorOverrides.get(item.stock_id) || cleanName(item.industry_category) || "其他",
+        sector: sectorFor(item.stock_id, cleanName(item.industry_category)),
         market: item.type === "tpex" ? "tpex" : "twse"
       });
     }
@@ -179,6 +211,80 @@ async function fetchPrices(date) {
     ...(twse.status === "fulfilled" ? twse.value : []),
     ...(tpex.status === "fulfilled" ? tpex.value : [])
   ];
+}
+
+function liveDate(value) {
+  const text = String(value || "");
+  if (!/^\d{8}$/.test(text)) return "";
+  return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
+}
+
+function liveChannel(stock) {
+  const exchange = stock.market === "tpex" ? "otc" : "tse";
+  return `${exchange}_${stock.code}.tw`;
+}
+
+function parseLiveQuote(row, fallback) {
+  const last = numberValue(row.z) || numberValue(row.pz) || numberValue(row.y) || fallback.close;
+  const previousClose = numberValue(row.y) || fallback.close;
+  const open = numberValue(row.o) || last;
+  const high = numberValue(row.h) || Math.max(open, last);
+  const low = numberValue(row.l) || Math.min(open, last);
+  const lots = numberValue(row.v) || numberValue(row.tv) || 0;
+  const shares = lots > 0 ? lots * 1000 : fallback.shares;
+  const amount = shares > 0 ? Math.round(shares * last) : fallback.amount;
+
+  return {
+    code: row.c || fallback.code,
+    name: cleanName(row.n) || fallback.name,
+    close: Math.round(last * 100) / 100,
+    open: Math.round(open * 100) / 100,
+    high: Math.round(high * 100) / 100,
+    low: Math.round(low * 100) / 100,
+    change: Math.round((last - previousClose) * 100) / 100,
+    shares,
+    amount,
+    pe: fallback.pe || 0,
+    market: row.ex === "otc" ? "tpex" : "twse",
+    date: liveDate(row.d)
+  };
+}
+
+async function fetchLivePrices(basePrices) {
+  const fallbackByCode = new Map(basePrices.map((stock) => [stock.code, stock]));
+  const channels = basePrices.map(liveChannel);
+  const rows = [];
+
+  for (let index = 0; index < channels.length; index += 90) {
+    const batch = channels.slice(index, index + 90).join("|");
+    try {
+      const response = await fetch(
+        `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${encodeURIComponent(batch)}&json=1&delay=0`,
+        {
+          headers: {
+            "accept": "application/json,text/plain,*/*",
+            "referer": "https://mis.twse.com.tw/stock/fibest.jsp",
+            "user-agent": "Mozilla/5.0 tw-stock-ai-radar/1.0"
+          }
+        }
+      );
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      const payload = JSON.parse((await response.text()).trim());
+      rows.push(...(payload.msgArray || []));
+    } catch (error) {
+      console.warn(`Live quote batch skipped ${index}: ${error.message}`);
+    }
+    await sleep(140);
+  }
+
+  return rows
+    .map((row) => {
+      const fallback = fallbackByCode.get(row.c);
+      if (!fallback) return null;
+      const quote = parseLiveQuote(row, fallback);
+      return quote.date && quote.close > 0 && quote.high > 0 && quote.low > 0 ? quote : null;
+    })
+    .filter(Boolean);
 }
 
 async function fetchTwseInstitution(date) {
@@ -257,6 +363,22 @@ function pctChange(current, previous) {
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
+function isIsolatedBadBar(previous, current, next) {
+  if (!previous || !current || !next) return false;
+  const currentClose = Number(current.close);
+  const previousClose = Number(previous.close);
+  const nextClose = Number(next.close);
+  if (![currentClose, previousClose, nextClose].every((value) => Number.isFinite(value) && value > 0)) return true;
+
+  const dropThenRecover = currentClose < previousClose * 0.65 && nextClose > previousClose * 0.82;
+  const spikeThenRecover = currentClose > previousClose * 1.55 && nextClose < previousClose * 1.18;
+  return dropThenRecover || spikeThenRecover;
+}
+
+function cleanHistory(history) {
+  return history.filter((item, index, list) => !isIsolatedBadBar(list[index - 1], item, list[index + 1]));
+}
+
 function sumFlow(flows, code, days, key = "total") {
   const rows = flows.slice(-days);
   const total = rows.reduce((sum, dayMap) => sum + (dayMap.get(code)?.[key] || 0), 0);
@@ -270,6 +392,7 @@ function riskLabel(volatility, pe, mom20) {
 }
 
 function buildStockRow(price, info, history, flows) {
+  history = cleanHistory(history);
   const closes = history.map((item) => item.close);
   const current = price.close;
   const previous = closes.at(-2) || current - price.change;
@@ -285,7 +408,7 @@ function buildStockRow(price, info, history, flows) {
   return {
     code: price.code,
     name: info?.name || price.name,
-    sector: info?.sector || sectorOverrides.get(price.code) || "其他",
+    sector: sectorFor(price.code, info?.sector),
     price: Math.round(current * 100) / 100,
     market: info?.market || price.market,
     flow5: sumFlow(flows, price.code, 5),
@@ -309,7 +432,9 @@ async function main() {
   const today = toTaipeiDate();
   const info = await fetchStockInfo();
   const latest = await findLatestTradingDate(today);
-  const latestKey = isoDate(latest.date);
+  let latestKey = isoDate(latest.date);
+  let effectiveLatestPrices = latest.prices;
+  let liveQuoteCount = 0;
 
   const calendarDates = Array.from({ length: LOOKBACK_CALENDAR_DAYS }, (_, index) =>
     addDays(latest.date, index - LOOKBACK_CALENDAR_DAYS + 1)
@@ -342,6 +467,37 @@ async function main() {
     }
   }
 
+  try {
+    const livePrices = await fetchLivePrices(latest.prices);
+    const liveKey = livePrices[0]?.date || "";
+    if (livePrices.length >= MIN_COMMON_STOCKS && liveKey >= latestKey) {
+      for (const stock of livePrices) {
+        if (!priceHistory.has(stock.code)) priceHistory.set(stock.code, []);
+        const history = priceHistory.get(stock.code);
+        const liveBar = {
+          date: stock.date,
+          open: stock.open,
+          high: stock.high,
+          low: stock.low,
+          close: stock.close,
+          volume: Math.round(stock.shares / 1000),
+          amount: Math.round(stock.amount),
+          market: stock.market
+        };
+        if (history.at(-1)?.date === stock.date) {
+          history[history.length - 1] = liveBar;
+        } else {
+          history.push(liveBar);
+        }
+      }
+      latestKey = liveKey;
+      effectiveLatestPrices = livePrices;
+      liveQuoteCount = livePrices.length;
+    }
+  } catch (error) {
+    console.warn(`Live quote update skipped: ${error.message}`);
+  }
+
   const institutionDays = tradingDays.slice(-60);
   const rawFlowSnapshots = await mapLimit(institutionDays, 2, async (snapshot) => {
     try {
@@ -355,7 +511,7 @@ async function main() {
   });
   const flowSnapshots = rawFlowSnapshots.filter(Boolean).map((snapshot) => snapshot.map);
 
-  const latestPrices = new Map(latest.prices.map((stock) => [stock.code, stock]));
+  const latestPrices = new Map(effectiveLatestPrices.map((stock) => [stock.code, stock]));
   const stocks = [...latestPrices.values()]
     .map((price) => {
       const history = priceHistory.get(price.code) || [{
@@ -377,7 +533,8 @@ async function main() {
     updatedAt: new Date().toISOString(),
     dataDate: latestKey,
     timezone: "Asia/Taipei",
-    source: "TWSE + TPEx official APIs",
+    source: liveQuoteCount ? "TWSE + TPEx official APIs + TWSE MIS live quotes" : "TWSE + TPEx official APIs",
+    liveQuoteCount,
     note: "價格使用上市/上櫃官方收盤行情；法人使用三大法人日報；20/60 日漲幅以近交易日收盤價估算。",
     stocks
   };

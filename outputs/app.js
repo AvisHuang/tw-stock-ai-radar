@@ -26,6 +26,40 @@ let stocks = [
 ];
 
 const DISPLAY_LIMIT = 20;
+const sectorCodes = {
+  "水泥工業": "01",
+  "食品工業": "02",
+  "塑膠工業": "03",
+  "紡織纖維": "04",
+  "電機機械": "05",
+  "電器電纜": "06",
+  "玻璃陶瓷": "08",
+  "造紙工業": "09",
+  "鋼鐵工業": "10",
+  "橡膠工業": "11",
+  "汽車工業": "12",
+  "建材營造業": "14",
+  "航運業": "15",
+  "觀光餐旅": "16",
+  "金融保險業": "17",
+  "貿易百貨業": "18",
+  "生技醫療業": "22",
+  "油電燃氣業": "23",
+  "半導體業": "24",
+  "電腦及週邊設備業": "25",
+  "光電業": "26",
+  "通信網路業": "27",
+  "電子零組件業": "28",
+  "電子通路業": "29",
+  "資訊服務業": "30",
+  "其他電子業": "31",
+  "文化創意業": "32",
+  "農業科技業": "33",
+  "綠能環保": "35",
+  "數位雲端": "36",
+  "運動休閒": "37",
+  "居家生活": "38"
+};
 let dataMeta = {
   source: "內建展示資料",
   updatedAt: new Date().toISOString()
@@ -361,14 +395,34 @@ function generateChartSeries(stock) {
 
 function movingAverage(series, windowSize) {
   return series.map((_, index) => {
-    const from = Math.max(0, index - windowSize + 1);
+    if (index < windowSize - 1) return null;
+    const from = index - windowSize + 1;
     const slice = series.slice(from, index + 1);
     return slice.reduce((sum, item) => sum + item.close, 0) / slice.length;
   });
 }
 
 function polyline(points, mapX, mapY) {
-  return points.map((value, index) => `${mapX(index).toFixed(1)},${mapY(value).toFixed(1)}`).join(" ");
+  return points
+    .map((value, index) => Number.isFinite(value) ? `${mapX(index).toFixed(1)},${mapY(value).toFixed(1)}` : "")
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isIsolatedBadBar(previous, current, next) {
+  if (!previous || !current || !next) return false;
+  const currentClose = Number(current.close);
+  const previousClose = Number(previous.close);
+  const nextClose = Number(next.close);
+  if (![currentClose, previousClose, nextClose].every((value) => Number.isFinite(value) && value > 0)) return true;
+
+  const dropThenRecover = currentClose < previousClose * 0.65 && nextClose > previousClose * 0.82;
+  const spikeThenRecover = currentClose > previousClose * 1.55 && nextClose < previousClose * 1.18;
+  return dropThenRecover || spikeThenRecover;
+}
+
+function cleanChartSeries(series) {
+  return series.filter((item, index, list) => !isIsolatedBadBar(list[index - 1], item, list[index + 1]));
 }
 
 function marketLabel(stock) {
@@ -458,7 +512,7 @@ function renderTechSvg(stock) {
 
 function generateChartSeries(stock) {
   if (Array.isArray(stock.history) && stock.history.length >= 2) {
-    return stock.history
+    return cleanChartSeries(stock.history
       .map((item) => ({
         date: item.date,
         open: Number(item.open),
@@ -469,7 +523,7 @@ function generateChartSeries(stock) {
         amount: Number(item.amount) || 0
       }))
       .filter((item) => item.open > 0 && item.high > 0 && item.low > 0 && item.close > 0)
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      .sort((a, b) => String(a.date).localeCompare(String(b.date))));
   }
 
   const points = 90;
@@ -569,15 +623,18 @@ function technicalIndicators(stock) {
   const ma10 = movingAverage(series, 10);
   const ma20 = movingAverage(series, 20);
   const ma60 = movingAverage(series, 60);
+  const ma240 = movingAverage(series, 240);
   const rsi = calculateRsi(closes);
   const kd = calculateKd(series);
+  const j = kd.k.map((value, index) => clamp(3 * value - 2 * kd.d[index], 0, 100));
   const macd = calculateMacd(closes);
   const last = series.length - 1;
   const maValues = {
     ma5: roundOne(ma5[last]),
     ma10: roundOne(ma10[last]),
     ma20: roundOne(ma20[last]),
-    ma60: roundOne(ma60[last])
+    ma60: roundOne(ma60[last]),
+    ma240: Number.isFinite(ma240[last]) ? roundOne(ma240[last]) : null
   };
 
   return {
@@ -586,13 +643,15 @@ function technicalIndicators(stock) {
     ma10Line: ma10,
     ma20Line: ma20,
     ma60Line: ma60,
+    ma240Line: ma240,
     rsi,
-    kd,
+    kd: { ...kd, j },
     macd,
     ...maValues,
     rsiLast: Math.round(rsi[last]),
     kLast: Math.round(kd.k[last]),
     dLast: Math.round(kd.d[last]),
+    jLast: Math.round(j[last]),
     difLast: roundOne(macd.dif[last]),
     signalLast: roundOne(macd.signal[last]),
     histogramLast: roundOne(macd.histogram[last]),
@@ -613,8 +672,12 @@ function renderTechSvg(stock) {
   const pad = { left: 44, right: 28, top: 20, bottom: 22 };
   const chartWidth = width - pad.left - pad.right;
   const totalHeight = candleHeight + rsiHeight + macdHeight + gap * 2;
-  const visibleMa = [tech.ma5Line, tech.ma10Line, tech.ma20Line, tech.ma60Line].map((line) => line.slice(offset));
-  const prices = series.flatMap((item, index) => [item.high, item.low, ...visibleMa.map((line) => line[index])]);
+  const visibleMa = [tech.ma5Line, tech.ma10Line, tech.ma20Line, tech.ma60Line, tech.ma240Line].map((line) => line.slice(offset));
+  const prices = series.flatMap((item, index) => [
+    item.high,
+    item.low,
+    ...visibleMa.map((line) => line[index]).filter(Number.isFinite)
+  ]);
   const minPrice = Math.min(...prices) * 0.985;
   const maxPrice = Math.max(...prices) * 1.015;
   const mapX = (index) => pad.left + (index / (series.length - 1)) * chartWidth;
@@ -625,6 +688,7 @@ function renderTechSvg(stock) {
   const rsiPoints = tech.rsi.slice(offset);
   const kPoints = tech.kd.k.slice(offset);
   const dPoints = tech.kd.d.slice(offset);
+  const jPoints = tech.kd.j.slice(offset);
   const mapOsc = (value) => rsiBaseY + 12 + ((100 - value) / 100) * (rsiHeight - 24);
   const macdLine = tech.macd.dif.slice(offset);
   const signalLine = tech.macd.signal.slice(offset);
@@ -697,8 +761,12 @@ function renderTechSvg(stock) {
   const indicatorHeight = 150;
   const pad = { left: 48, right: 34, top: 28, bottom: 34 };
   const chartWidth = width - pad.left - pad.right;
-  const visibleMa = [tech.ma5Line, tech.ma10Line, tech.ma20Line, tech.ma60Line].map((line) => line.slice(offset));
-  const prices = series.flatMap((item, index) => [item.high, item.low, ...visibleMa.map((line) => line[index])]);
+  const visibleMa = [tech.ma5Line, tech.ma10Line, tech.ma20Line, tech.ma60Line, tech.ma240Line].map((line) => line.slice(offset));
+  const prices = series.flatMap((item, index) => [
+    item.high,
+    item.low,
+    ...visibleMa.map((line) => line[index]).filter(Number.isFinite)
+  ]);
   const minPrice = Math.min(...prices) * 0.985;
   const maxPrice = Math.max(...prices) * 1.015;
   const mapX = (index) => pad.left + (index / Math.max(series.length - 1, 1)) * chartWidth;
@@ -746,6 +814,7 @@ function renderTechSvg(stock) {
   const rsiPoints = tech.rsi.slice(offset);
   const kPoints = tech.kd.k.slice(offset);
   const dPoints = tech.kd.d.slice(offset);
+  const jPoints = tech.kd.j.slice(offset);
   const macdLine = tech.macd.dif.slice(offset);
   const signalLine = tech.macd.signal.slice(offset);
   const histogramLine = tech.macd.histogram.slice(offset);
@@ -775,21 +844,23 @@ function renderTechSvg(stock) {
           <polyline points="${polyline(visibleMa[1], mapX, mapPrice)}" class="ma-line ma10" />
           <polyline points="${polyline(visibleMa[2], mapX, mapPrice)}" class="ma-line ma20" />
           <polyline points="${polyline(visibleMa[3], mapX, mapPrice)}" class="ma-line ma60" />
-          <text x="${pad.left}" y="${priceHeight - 10}" class="chart-label">MA5 ${tech.ma5} / MA10 ${tech.ma10} / MA20 ${tech.ma20} / MA60 ${tech.ma60}</text>
+          <polyline points="${polyline(visibleMa[4], mapX, mapPrice)}" class="ma-line ma240" />
+          <text x="${pad.left}" y="${priceHeight - 10}" class="chart-label">MA5 ${tech.ma5} / MA10 ${tech.ma10} / MA20 ${tech.ma20} / MA60 ${tech.ma60}${tech.ma240 ? ` / MA240 ${tech.ma240}` : ""}</text>
           <text x="${width - 96}" y="${mapPrice(stock.price) - 8}" class="price-label">${stock.price}</text>
         </svg>
       </section>
-      ${renderOscPanel("KD", `K ${tech.kLast} / D ${tech.dLast}`, [
-        { values: kPoints, className: "osc-line kd" },
-        { values: dPoints, className: "osc-line signal" }
-      ], 0, 100)}
-      ${renderOscPanel("RSI", `RSI ${tech.rsiLast}`, [
-        { values: rsiPoints, className: "osc-line rsi" }
-      ], 0, 100)}
       ${renderOscPanel("MACD", `DIF ${tech.difLast} / Signal ${tech.signalLast} / Hist ${tech.histogramLast}`, [
         { values: macdLine, className: "osc-line macd" },
         { values: signalLine, className: "osc-line signal" }
       ], -macdAbs, macdAbs, `<line x1="${pad.left}" x2="${width - pad.right}" y1="${macdZeroY.toFixed(1)}" y2="${macdZeroY.toFixed(1)}" class="chart-grid" />${macdBars}`)}
+      ${renderOscPanel("KDJ", `K ${tech.kLast} / D ${tech.dLast} / J ${tech.jLast}`, [
+        { values: kPoints, className: "osc-line kd" },
+        { values: dPoints, className: "osc-line signal" },
+        { values: jPoints, className: "osc-line j" }
+      ], 0, 100)}
+      ${renderOscPanel("RSI", `RSI ${tech.rsiLast}`, [
+        { values: rsiPoints, className: "osc-line rsi" }
+      ], 0, 100)}
     </div>
   `;
 }
@@ -1060,7 +1131,7 @@ function renderMarketBrief(sectors) {
 
 function renderSectors(sectors) {
   els.sectorList.innerHTML = sectors
-    .slice(0, 6)
+    .slice(0, 24)
     .map(
       (sector, index) => {
         const members = [...sector.members]
@@ -1190,8 +1261,150 @@ function findStockByCode(code) {
   return stocks.map(enrich).find((stock) => stock.code === normalized);
 }
 
+let activeChartInstances = [];
+let activeChartObservers = [];
+
+function disposeInteractiveCharts() {
+  activeChartObservers.forEach((observer) => observer.disconnect());
+  activeChartObservers = [];
+  activeChartInstances.forEach((chart) => {
+    try {
+      chart.remove();
+    } catch {
+      // Ignore charts that were already removed by the browser.
+    }
+  });
+  activeChartInstances = [];
+}
+
+function chartTheme(height) {
+  return {
+    height,
+    autoSize: true,
+    layout: {
+      background: { color: "#111314" },
+      textColor: "#d6dde5",
+      fontFamily: "Inter, system-ui, sans-serif"
+    },
+    grid: {
+      vertLines: { color: "rgba(255,255,255,0.04)" },
+      horzLines: { color: "rgba(255,255,255,0.08)" }
+    },
+    rightPriceScale: { borderColor: "rgba(255,255,255,0.12)" },
+    timeScale: {
+      borderColor: "rgba(255,255,255,0.12)",
+      timeVisible: true,
+      secondsVisible: false
+    },
+    localization: { locale: "zh-TW" },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    handleScale: true,
+    handleScroll: true
+  };
+}
+
+function addCandles(chart, options) {
+  return chart.addCandlestickSeries ? chart.addCandlestickSeries(options) : chart.addSeries(LightweightCharts.CandlestickSeries, options);
+}
+
+function addLine(chart, options) {
+  return chart.addLineSeries ? chart.addLineSeries(options) : chart.addSeries(LightweightCharts.LineSeries, options);
+}
+
+function addHistogram(chart, options) {
+  return chart.addHistogramSeries ? chart.addHistogramSeries(options) : chart.addSeries(LightweightCharts.HistogramSeries, options);
+}
+
+function lineData(series, values) {
+  return series
+    .map((item, index) => ({ time: item.date, value: Number.isFinite(values[index]) ? roundOne(values[index]) : null }))
+    .filter((item) => item.value !== null);
+}
+
+function mountInteractiveChart(stock) {
+  disposeInteractiveCharts();
+  if (!window.LightweightCharts) return;
+
+  const root = document.querySelector("#interactiveChart");
+  if (!root) return;
+
+  const tech = technicalIndicators(stock);
+  const series = tech.series;
+  const priceChart = LightweightCharts.createChart(root.querySelector("[data-tv-pane='price']"), chartTheme(390));
+  const macdChart = LightweightCharts.createChart(root.querySelector("[data-tv-pane='macd']"), chartTheme(170));
+  const kdjChart = LightweightCharts.createChart(root.querySelector("[data-tv-pane='kdj']"), chartTheme(150));
+  const rsiChart = LightweightCharts.createChart(root.querySelector("[data-tv-pane='rsi']"), chartTheme(140));
+  activeChartInstances = [priceChart, macdChart, kdjChart, rsiChart];
+
+  addCandles(priceChart, {
+    upColor: "#26a69a",
+    downColor: "#ef5350",
+    borderVisible: false,
+    wickUpColor: "#26a69a",
+    wickDownColor: "#ef5350"
+  }).setData(series.map((item) => ({ time: item.date, open: item.open, high: item.high, low: item.low, close: item.close })));
+
+  const volume = addHistogram(priceChart, {
+    priceFormat: { type: "volume" },
+    priceScaleId: "",
+    color: "rgba(88, 174, 255, 0.22)"
+  });
+  volume.setData(series.map((item) => ({
+    time: item.date,
+    value: item.volume,
+    color: item.close >= item.open ? "rgba(38, 166, 154, 0.32)" : "rgba(239, 83, 80, 0.32)"
+  })));
+  priceChart.priceScale("").applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+
+  [
+    [tech.ma5Line, "#ff4d6d"],
+    [tech.ma10Line, "#d64cff"],
+    [tech.ma20Line, "#ff9f1a"],
+    [tech.ma60Line, "#00d084"],
+    [tech.ma240Line, "#2f7cff"]
+  ].forEach(([values, color]) => addLine(priceChart, { color, lineWidth: 2, priceLineVisible: false }).setData(lineData(series, values)));
+
+  addHistogram(macdChart, { priceLineVisible: false }).setData(series.map((item, index) => ({
+    time: item.date,
+    value: roundOne(tech.macd.histogram[index]),
+    color: tech.macd.histogram[index] >= 0 ? "#ff5c6f" : "#62cda6"
+  })));
+  addLine(macdChart, { color: "#2f7cff", lineWidth: 2, priceLineVisible: false }).setData(lineData(series, tech.macd.dif));
+  addLine(macdChart, { color: "#ff9f1a", lineWidth: 2, priceLineVisible: false }).setData(lineData(series, tech.macd.signal));
+  addLine(kdjChart, { color: "#ffd85d", lineWidth: 2, priceLineVisible: false }).setData(lineData(series, tech.kd.k));
+  addLine(kdjChart, { color: "#f5a623", lineWidth: 2, priceLineVisible: false }).setData(lineData(series, tech.kd.d));
+  addLine(kdjChart, { color: "#00a5e5", lineWidth: 2, priceLineVisible: false }).setData(lineData(series, tech.kd.j));
+  addLine(rsiChart, { color: "#00a5e5", lineWidth: 2, priceLineVisible: false }).setData(lineData(series, tech.rsi));
+
+  activeChartInstances.forEach((chart) => chart.timeScale().fitContent());
+
+  let syncing = false;
+  activeChartInstances.forEach((chart) => {
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (syncing || !range) return;
+      syncing = true;
+      activeChartInstances.forEach((target) => {
+        if (target !== chart) target.timeScale().setVisibleLogicalRange(range);
+      });
+      syncing = false;
+    });
+  });
+
+  const resize = () => {
+    const width = root.clientWidth || 900;
+    activeChartInstances.forEach((chart) => chart.applyOptions({ width }));
+  };
+  resize();
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(resize);
+    observer.observe(root);
+    activeChartObservers.push(observer);
+  }
+}
+
 function closeStockModal() {
   if (!els.stockModal) return;
+  disposeInteractiveCharts();
   els.stockModal.classList.add("is-hidden");
   document.body.classList.remove("modal-open");
 }
@@ -1235,7 +1448,37 @@ function openStockModal(code) {
     </div>
 
     <div class="modal-chart-wrap">
-      ${renderTechSvg(stock)}
+      <div id="interactiveChart" class="tv-chart-shell">
+        <section class="tv-pane tv-price-pane">
+          <div class="indicator-panel-head">
+            <strong>日 K 線</strong>
+            <span>MA5 ${tech.ma5} / MA10 ${tech.ma10} / MA20 ${tech.ma20} / MA60 ${tech.ma60}${tech.ma240 ? ` / MA240 ${tech.ma240}` : ""}</span>
+          </div>
+          <div class="tv-pane-canvas" data-tv-pane="price"></div>
+        </section>
+        <section class="tv-pane">
+          <div class="indicator-panel-head">
+            <strong>MACD</strong>
+            <span>DIF ${tech.difLast} / Signal ${tech.signalLast} / Hist ${tech.histogramLast}</span>
+          </div>
+          <div class="tv-pane-canvas" data-tv-pane="macd"></div>
+        </section>
+        <section class="tv-pane">
+          <div class="indicator-panel-head">
+            <strong>KDJ</strong>
+            <span>K ${tech.kLast} / D ${tech.dLast} / J ${tech.jLast}</span>
+          </div>
+          <div class="tv-pane-canvas" data-tv-pane="kdj"></div>
+        </section>
+        <section class="tv-pane">
+          <div class="indicator-panel-head">
+            <strong>RSI</strong>
+            <span>RSI ${rsi}</span>
+          </div>
+          <div class="tv-pane-canvas" data-tv-pane="rsi"></div>
+        </section>
+      </div>
+      <div class="tv-chart-fallback">${renderTechSvg(stock)}</div>
     </div>
 
     <div class="modal-signal-grid">
@@ -1264,6 +1507,11 @@ function openStockModal(code) {
 
   els.stockModal.classList.remove("is-hidden");
   document.body.classList.add("modal-open");
+  requestAnimationFrame(() => {
+    if (!window.LightweightCharts) return;
+    document.querySelector(".tv-chart-fallback")?.classList.add("is-hidden");
+    mountInteractiveChart(stock);
+  });
 }
 
 function renderStockAnalysis(code = "") {
